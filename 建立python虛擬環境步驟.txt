@@ -1,0 +1,50 @@
+【首次建立】環境
+1. 建立虛擬環境資料夾：
+powershell
+python -m venv venv
+
+2. 暫時解除 PowerShell 安全鎖 (不需管理員權限)：
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+(注意：-Scope Process 代表這個權限只在目前這個 VS Code 視窗有效，安全且免密碼。)
+
+3. 啟動環境：
+powershell
+.\venv\Scripts\activate
+(成功後，提示字元前方會出現 (venv) 字樣。)
+
+
+【後續開發】啟動環境 (每天上班開啟時執行)
+
+重新開啟 VS Code，或是開了一個新的終端機視窗，請直接輸入這行「合併指令」：
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process; .\venv\Scripts\activate
+
+【套件管理】與同步進度
+1. 安裝套件 (在虛擬環境中)：
+powershell
+pip install <套件名稱>
+
+2. 產生清單 (收工前執行)：
+powershell
+pip freeze > requirements.txt
+
+3. 跨電腦同步原則：
+同步： .py 程式碼檔案、requirements.txt 清單。
+禁止同步： venv/ 資料夾 (Windows 的環境拿到 Mac 不能跑，請在 Mac 重新建立它自己的 venv)。
+
+
+在 Mac 的 VS Code 終端機執行：
+
+1. 建立 Mac 版環境： python3 -m venv venv
+
+2. 啟動 Mac 環境： source venv/bin/activate
+
+3. 一鍵安裝同步清單： pip install -r requirements.txt
+
+
+如何確認環境已啟動？ 看到提示字元最前面有 (venv) 括號。
+
+如何關閉環境？ 直接輸入 deactivate 或是關閉終端機即可。
+
+VS Code 提示： 如果 VS Code 右下角跳出「偵測到新的虛擬環境，是否切換？」，請選 Yes (是)。
+
+
