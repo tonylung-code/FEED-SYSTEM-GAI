@@ -1,0 +1,21 @@
+寫入GitHub步驟
+
+1. 把變動「掃進」準備上傳的清單中：
+git add . 
+
+2. 為變動貼上標籤，寫下你做了什麼：
+git commit -m "寫下你做了什麼"
+
+把這個存檔點送到 GitHub
+git push
+
+結合輸入
+git add . && git commit -m "今日進度更新" && git push
+------------------------------------------
+開工
+
+抓進度
+git pull
+
+進環境
+source venv/Scripts/activate
