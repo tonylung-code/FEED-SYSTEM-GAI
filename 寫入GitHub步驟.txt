@@ -10,7 +10,7 @@ git commit -m "寫下你做了什麼"
 git push
 
 結合輸入
-git add . && git commit -m "今日進度更新" && git push
+git add . && git commit -m "update" && git push
 ------------------------------------------
 開工
 
