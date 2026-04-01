@@ -31,3 +31,6 @@ git pull
 如果你連本地的 Commit 紀錄都覺得亂掉了，想完全以 GitHub 雲端為準：
 # 強制讓本地 main 分支「對齊」雲端的 origin/main
 git reset --hard origin/main
+
+強制恢復到最後一次提交：(改動後想復原並清除提交提醒)    
+git reset --hard HEAD
