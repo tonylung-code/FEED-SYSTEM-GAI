@@ -19,3 +19,15 @@ git pull
 
 進環境
 source venv/Scripts/activate
+
+如果你改了好幾個檔案，覺得通通都不要了，想直接同步雲端最新進度：
+
+# 第一步：把所有本地改動通通「抹掉」
+git reset --hard HEAD
+
+# 第二步：安心抓取雲端更新
+git pull
+
+如果你連本地的 Commit 紀錄都覺得亂掉了，想完全以 GitHub 雲端為準：
+# 強制讓本地 main 分支「對齊」雲端的 origin/main
+git reset --hard origin/main
