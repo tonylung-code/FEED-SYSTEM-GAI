@@ -1,8 +1,7 @@
-﻿"""
-上銀表格處理
+"""
+PMI Catalog Processing Script
 
-來源：code/上銀表格處裡.ipynb
-將 notebook 中的文字擷取與表格清洗流程轉換成一般 Python 腳本。
+Fixed version without fitz dependency.
 """
 
 import pdfplumber
@@ -202,14 +201,22 @@ def process_pmi_tables(pdf_path):
                 if len(df) > 10:
                     # --- 動態表頭錨定 ---
                     # 尋找包含特定關鍵詞的列作為表頭
-                    header_keywords = r"型號|外徑|導程|動負荷|靜負荷|Ca|Co|剛性"
+                    header_keywords = r"型號|外徑|導程|動負荷|靜負荷|Ca|Co|剛性|型号|外径|导程|动|静|TYPE|Dg6|Lead|Load|Rigidity"
                     header_idx = -1
                     
                     for idx, row in df.iterrows():
                         row_text = ' '.join([str(x) for x in row])
                         if re.search(header_keywords, row_text):
-                            header_idx = idx
-                            break
+                            # 檢查下一行是否有數值
+                            if idx + 1 < len(df):
+                                next_row = df.iloc[idx + 1]
+                                numeric_count = sum(pd.to_numeric(next_row, errors='coerce').notna())
+                                if numeric_count > 2:  # 如果下一行有超過2個數值，則這是頭部
+                                    header_idx = idx
+                                    break
+                            else:
+                                header_idx = idx
+                                break
                     
                     if header_idx == -1:
                         # 備用：尋找含有數字密度高的列
@@ -223,6 +230,7 @@ def process_pmi_tables(pdf_path):
                     
                     # 提取表頭列，清理空白
                     header_row = df.iloc[header_idx].copy()
+                    print(f"Debug: Page {i+1} header row {header_idx}: {header_row.tolist()}")
                     new_columns = []
                     for col_idx, cell in enumerate(header_row):
                         cell_str = str(cell).strip() if cell and str(cell) != 'None' else ""
@@ -245,6 +253,7 @@ def process_pmi_tables(pdf_path):
                     
                     # 刪除表頭（含）以上的雜訊列，只保留純數據
                     df = df.iloc[header_idx + 1:].reset_index(drop=True).ffill()
+                    print(f"Debug: Page {i+1} first data row: {df.iloc[0].tolist() if not df.empty else 'empty'}")
                     
                     # 插入系列名和頁碼
                     df.insert(0, "Series_Name", series_name)
@@ -284,9 +293,9 @@ def build_final_pmi_df(all_processed_tables):
     
     # 定義標準欄位對應規則
     mapping_rules = {
-        "型號": r"型號|型号|model|MODEL|Code",
-        "公稱 外徑": r"外徑|外径|直径|nominal|d(?:\s|_|$|mm)",
-        "導程": r"導程|导程|lead|l(?:\s|_|$|mm)",
+        "型號": r"型號|型号|model|MODEL|Code|TYPE|型 號",
+        "公稱 外徑": r"外徑|外径|直径|nominal|d(?:\s|_|$|mm)|Dg6|D6",
+        "導程": r"導程|导程|lead|l(?:\s|_|$|mm)|導 程",
         "珠徑": r"珠徑|珠径|球徑|da|dp",
         "珠卷數": r"卷數|卷数|圈數|turns|count",
         "動負荷 C (kfg)": r"動|动|ca(?:\s|_|$)|C\(|C\s|dynamic",

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd \"c:\\\\Users\\\\e11338\\\\Desktop\\\\Feed System GAI\"; & \"venv\\\\Scripts\\\\Activate\\.ps1\"; python -c \"import chromadb; client = chromadb\\.PersistentClient\\(path='databases/hiwin_vector_db'\\); collection = client\\.get_collection\\('screw_specs'\\); print\\('Count:', collection\\.count\\(\\)\\); results = collection\\.query\\(query_texts=\\['螺桿動負荷'\\], n_results=1\\); print\\('Query result:', results\\['documents'\\]\\[0\\]\\[0\\]\\[:100\\]\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
