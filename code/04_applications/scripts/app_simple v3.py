@@ -11,7 +11,7 @@ except ImportError:
     RAG_AVAILABLE = False
 
 # --- [1. 頁面設定] ---
-st.set_page_config(page_title="HIWIN 智慧選型系統", layout="wide")
+st.set_page_config(page_title="進給系統智慧選型系統", layout="wide")
 
 # --- [2. 自定義 CSS] ---
 st.markdown("""
@@ -34,15 +34,48 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- [3. 資料載入與快取] ---
+SCREW_REQUIRED_COLUMNS = ["型號", "公稱 外徑", "導程", "動負荷 C (kfg)"]
+
+
+def _normalize_screw_df(df, brand):
+    df = df.copy()
+    df.columns = [str(col).strip() for col in df.columns]
+
+    missing = [col for col in SCREW_REQUIRED_COLUMNS if col not in df.columns]
+    if missing:
+        raise ValueError(f"{brand} Excel 缺少必要欄位：{', '.join(missing)}")
+
+    for col in ["公稱 外徑", "導程", "動負荷 C (kfg)", "靜負荷 Co (kfg)", "剛性 kfg/umk"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df.dropna(subset=SCREW_REQUIRED_COLUMNS)
+
+
+def _normalize_motor_df(df):
+    df = df.copy()
+    df.columns = [str(col).strip() for col in df.columns]
+    required = ["Model", "Torque_Nm", "Max_RPM"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise ValueError(f"FANUC Model sheet 缺少必要欄位：{', '.join(missing)}")
+
+    for col in ["Torque_Nm", "Max_RPM", "Inertia_kgm2"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df.dropna(subset=required)
+
+
 @st.cache_data
 def load_screw_data():
-    hiwin_df = pd.read_excel("data/HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
-    pmi_df = pd.read_excel("PMI_Final_Data_V3.xlsx", engine='openpyxl')
+    hiwin_df = _normalize_screw_df(pd.read_excel("data/HIWIN_Final_Data_V1.xlsx", engine='openpyxl'), "HIWIN")
+    pmi_df = _normalize_screw_df(pd.read_excel("data/PMI_Optimized_Core.xlsx", engine='openpyxl'), "PMI")
     return hiwin_df, pmi_df
 
 @st.cache_data
 def load_motor_data():
-    fanuc_df = pd.read_excel("data/FANUC_Specs.xlsx", engine='openpyxl')
+    fanuc_df = _normalize_motor_df(pd.read_excel("data/FANUC_Specs.xlsx", sheet_name="Model", engine='openpyxl'))
     return fanuc_df
 
 # 載入資料
@@ -158,26 +191,97 @@ def recommend_screws(brand, lead, diameter_range, required_dynamic_load, safety_
     else:
         return []
 
-    filtered = df[
-        (df['導程'] == lead) &
-        (df['公稱 外徑'].isin(diameter_range)) &
-        (df['動負荷 C (kfg)'] >= required_dynamic_load * safety_factor)
-    ].sort_values('動負荷 C (kfg)', ascending=False).head(5)
+    diameter_values = [float(d) for d in diameter_range]
+    load_threshold = required_dynamic_load * safety_factor
+    same_lead = (df['導程'] - float(lead)).abs() < 1e-6
+    in_diameter_range = df['公稱 外徑'].isin(diameter_values)
+    load_ok = df['動負荷 C (kfg)'] >= load_threshold
 
-    return filtered.to_dict('records')
+    filtered = df[same_lead & in_diameter_range & load_ok].copy()
+    if not filtered.empty:
+        filtered["推薦狀態"] = "合格"
+        filtered["安全倍率"] = (filtered["動負荷 C (kfg)"] / required_dynamic_load).round(2)
+        return (
+            filtered
+            .sort_values(["公稱 外徑", "動負荷 C (kfg)"], ascending=[True, True])
+            .head(5)
+            .to_dict('records')
+        )
+
+    # 沒有嚴格合格品時，不假裝合格；列出最接近的候選並標示不符原因。
+    fallback = df[same_lead & (in_diameter_range | load_ok)].copy()
+    if fallback.empty:
+        fallback = df[same_lead].copy()
+
+    if fallback.empty:
+        return []
+
+    fallback["符合直徑範圍"] = fallback["公稱 外徑"].isin(diameter_values)
+    fallback["符合動負荷"] = fallback["動負荷 C (kfg)"] >= load_threshold
+    fallback["推薦狀態"] = fallback.apply(
+        lambda row: "需提高動負荷" if row["符合直徑範圍"] and not row["符合動負荷"]
+        else "需放寬直徑/DN限制" if row["符合動負荷"] and not row["符合直徑範圍"]
+        else "導程相同但需重新評估",
+        axis=1,
+    )
+    fallback["安全倍率"] = (fallback["動負荷 C (kfg)"] / required_dynamic_load).round(2)
+    fallback["負荷缺口"] = (load_threshold - fallback["動負荷 C (kfg)"]).clip(lower=0)
+    fallback["直徑距離"] = fallback["公稱 外徑"].apply(
+        lambda dia: min(abs(float(dia) - target) for target in diameter_values) if diameter_values else 0
+    )
+
+    return (
+        fallback
+        .sort_values(["符合動負荷", "符合直徑範圍", "負荷缺口", "直徑距離"], ascending=[False, False, True, True])
+        .head(5)
+        .to_dict('records')
+    )
 
 def recommend_motors(required_torque, motor_max_speed, safety_factor=1.2):
-    # FANUC data is itemized; find models with torque >= required
-    torque_rows = fanuc_motors[fanuc_motors['Item'].str.contains('torque', case=False, na=False)]
-    # Filter for Nm units only
-    torque_rows = torque_rows[torque_rows['Unit'].str.strip() == 'Nm']
-    
-    # Simple filter: models where any torque value >= required
-    qualified_data = torque_rows[torque_rows['Value'].astype(float) >= required_torque * safety_factor]
-    # Assume speed is ok for now
-    return [{'Model': row['Model'], 'Value': float(row['Value'])} for _, row in qualified_data.head(5).iterrows()]
+    torque_threshold = required_torque * safety_factor
+    filtered = fanuc_motors[
+        (fanuc_motors["Torque_Nm"] >= torque_threshold) &
+        (fanuc_motors["Max_RPM"] >= motor_max_speed)
+    ].copy()
+
+    if filtered.empty:
+        fallback = fanuc_motors[
+            (fanuc_motors["Torque_Nm"] >= torque_threshold) |
+            (fanuc_motors["Max_RPM"] >= motor_max_speed)
+        ].copy()
+        if fallback.empty:
+            return []
+
+        fallback["推薦狀態"] = fallback.apply(
+            lambda row: "扭矩不足" if row["Torque_Nm"] < torque_threshold and row["Max_RPM"] >= motor_max_speed
+            else "最高轉速不足" if row["Torque_Nm"] >= torque_threshold and row["Max_RPM"] < motor_max_speed
+            else "需重新評估",
+            axis=1,
+        )
+        fallback["扭矩餘裕"] = fallback["Torque_Nm"] - torque_threshold
+        fallback["轉速餘裕"] = fallback["Max_RPM"] - motor_max_speed
+        return (
+            fallback
+            .sort_values(["扭矩餘裕", "轉速餘裕"], ascending=[False, False])
+            .head(5)
+            .to_dict('records')
+        )
+
+    filtered["推薦狀態"] = "合格"
+    filtered["安全倍率"] = (filtered["Torque_Nm"] / required_torque).round(2)
+    return (
+        filtered
+        .sort_values(["Torque_Nm", "Max_RPM"], ascending=[True, True])
+        .head(5)
+        .to_dict('records')
+    )
 
 # --- [6. RAG 聊天] ---
+CHAT_MODEL = "gemma2:9b"
+CHAT_HISTORY_TURNS = 4
+RAG_RESULTS = 3
+MAX_RESPONSE_TOKENS = 300
+
 # 定義專業知識字典
 SERIES_INFO = {
     "FDC": "雙螺帽設計，具備極高的軸向剛性與預壓穩定性，專為重負荷精密工具機設計。",
@@ -187,7 +291,34 @@ SERIES_INFO = {
     "FSI": "內循環設計，螺帽外徑小，運轉安靜，適合小型精密設備。"
 }
 
-def rag_query(query, context=""):
+def build_chat_history(messages, history_turns=CHAT_HISTORY_TURNS):
+    history_limit = history_turns * 2
+    return [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in messages[-history_limit:]
+        if msg.get("role") in {"user", "assistant"} and msg.get("content")
+    ]
+
+def screw_series(rec):
+    return str(rec.get("系列") or rec.get("series") or "").strip()
+
+def format_rag_source(meta, index):
+    brand = meta.get("brand", "未知品牌")
+    data_type = meta.get("data_type", "未知資料")
+    source_file = meta.get("source_file", "未知來源")
+    page = meta.get("page", "")
+    model = meta.get("model_id", "")
+    series = meta.get("series", "")
+    details = [str(brand), str(data_type), str(source_file)]
+    if page not in ("", None):
+        details.append(f"p.{page}")
+    if model:
+        details.append(f"型號 {model}")
+    if series:
+        details.append(f"系列 {series}")
+    return f"[{index}] " + " / ".join(details)
+
+def rag_query(query, context="", chat_history=None):
     if not RAG_AVAILABLE or collection is None:
         return "RAG 功能不可用，請安裝 chromadb 和 ollama。"
     
@@ -197,10 +328,19 @@ def rag_query(query, context=""):
     
     try:
         # 檢索型錄文本
-        results = collection.query(query_texts=[query], n_results=5)
+        retrieval_query = f"{query}\n{context}".strip()
+        results = collection.query(query_texts=[retrieval_query], n_results=RAG_RESULTS)
         docs = results['documents'][0] if results['documents'] else []
-        rag_context = "\n【參考資料】：\n" + "\n".join(docs)
-        rag_status_msg = "\n(系統提示：已完成檢索 - 參考型錄資料)\n"
+        metadatas = results.get('metadatas', [[]])[0] if results.get('metadatas') else []
+        source_lines = []
+        context_blocks = []
+        for idx, doc in enumerate(docs, start=1):
+            meta = metadatas[idx - 1] if idx - 1 < len(metadatas) else {}
+            source_label = format_rag_source(meta, idx)
+            source_lines.append(source_label)
+            context_blocks.append(f"{source_label}\n{doc}")
+        rag_context = "\n【參考資料】：\n" + "\n\n".join(context_blocks)
+        rag_status_msg = "\n\n【RAG 檢索來源】\n" + "\n".join(source_lines)
     except Exception as e:
         rag_context = f"\n(系統提示：資料庫檢索失敗: {e})\n"
     
@@ -211,15 +351,17 @@ def rag_query(query, context=""):
     - 動負荷需求: {required_dynamic_load} kgf
     - 扭矩需求: {required_motor_torque} N·m
     - 附載慣量: {load_inertia} kgf·cm·s²
+    {context}
     """
     
     # 組合最終 Prompt
     prompt = f"""
-    你是一位專業的 HIWIN 技術支援工程師，請根據提供的【目前計算參數】與【參考資料】來回答提問。
-    回答時請結合產品的物理特性與系列優點，請用繁體中文回答。
+    請根據【目前計算參數】、【推薦結果】、【參考資料】與最近對話回答使用者提問。
+    回答時請以資料庫與計算結果為準；若資料不足，請明確說明不足處，不要自行編造規格。
        
     當使用者詢問關於空間、尺寸或替代型號時，請優先參考「參考資料」進行對比。
     當使用者詢問關於安裝、保養或技術原理時，請參考「參考資料」。
+    當使用者詢問「推薦螺桿是什麼系列」時，請優先回答系列名稱，再補充完整型號。
 
     {calc_context}
     
@@ -227,15 +369,24 @@ def rag_query(query, context=""):
     
     使用者提問：{query}
     
-    請用繁體中文回答，語氣專業且誠懇，並儘可能引用具體參數。
+    請用繁體中文回答，語氣專業且誠懇。回答保持精簡，儘可能引用具體型號與參數。
     """
     
     # 呼叫 Ollama
     try:
-        response = ollama.chat(model='gemma4-gpu', messages=[
-            {'role': 'system', 'content': '你是一位精通機械工程與 CNC 零組件的繁體中文 AI 助理。請務必使用繁體中文（zh-TW）回答使用者的所有問題。請依據提供的上下文與計算結果，經過嚴謹的邏輯思考後，給出專業、精確的建議。'},
-            {'role': 'user', 'content': prompt}
-        ])
+        messages = [
+            {'role': 'system', 'content': '你是一位精通機械工程與 CNC 進給系統零組件的繁體中文 AI 助理。請依據上下文、計算結果與 RAG 參考資料回答；不知道時要說不知道。'},
+        ]
+        messages.extend(chat_history or [])
+        messages.append({'role': 'user', 'content': prompt})
+        response = ollama.chat(
+            model=CHAT_MODEL,
+            messages=messages,
+            options={
+                'num_predict': MAX_RESPONSE_TOKENS,
+                'temperature': 0.2,
+            },
+        )
         return response['message']['content'] + rag_status_msg
     except Exception as e:
         return f"Ollama 錯誤: {str(e)}"
@@ -347,16 +498,29 @@ with top_right:
     motor_recs = recommend_motors(required_motor_torque, motor_max_speed, safety_factor)
 
     if screw_recs:
+        if screw_recs[0].get("推薦狀態") != "合格":
+            st.warning("目前條件下沒有完全合格的螺桿；以下列出最接近候選，請依狀態調整直徑/DN限制或負荷條件。")
         st.markdown("**推薦螺桿：**")
         for rec in screw_recs[:3]:
-            st.write(f"- {rec['型號']} (動負荷: {rec['動負荷 C (kfg)']} kgf)")
+            series_text = f"系列 {screw_series(rec)} | " if screw_series(rec) else ""
+            st.write(
+                f"- {series_text}{rec['型號']} | 外徑 {rec['公稱 外徑']:.0f} / 導程 {rec['導程']:.0f} "
+                f"| 動負荷: {rec['動負荷 C (kfg)']:.0f} kgf "
+                f"| 狀態: {rec.get('推薦狀態', '合格')}"
+            )
     else:
         st.write("無匹配螺桿")
 
     if motor_recs:
+        if motor_recs[0].get("推薦狀態") != "合格":
+            st.warning("目前條件下沒有完全合格的 FANUC 馬達；以下為最接近候選。")
         st.markdown("**推薦馬達：**")
         for rec in motor_recs[:3]:
-            st.write(f"- {rec['Model']} (扭矩: {rec['Value']} N·m)")
+            st.write(
+                f"- {rec['Model']} | 扭矩: {rec['Torque_Nm']:.2f} N·m "
+                f"| 最高轉速: {rec['Max_RPM']:.0f} rpm "
+                f"| 狀態: {rec.get('推薦狀態', '合格')}"
+            )
     else:
         st.write("無匹配馬達")
 
@@ -407,8 +571,15 @@ with top_right:
             custom_screw_recs = recommend_screws(screw_brand, custom_lead, [custom_diameter], required_dynamic_load, safety_factor)
             
             if custom_screw_recs:
+                if custom_screw_recs[0].get("推薦狀態") != "合格":
+                    st.warning("此自定義規格沒有完全合格品；以下為最接近候選。")
                 for rec in custom_screw_recs[:3]:
-                    st.write(f"- {rec['型號']} (動負荷: {rec['動負荷 C (kfg)']} kgf)")
+                    series_text = f"系列 {screw_series(rec)} | " if screw_series(rec) else ""
+                    st.write(
+                        f"- {series_text}{rec['型號']} | 外徑 {rec['公稱 外徑']:.0f} / 導程 {rec['導程']:.0f} "
+                        f"| 動負荷: {rec['動負荷 C (kfg)']:.0f} kgf "
+                        f"| 狀態: {rec.get('推薦狀態', '合格')}"
+                    )
             else:
                 st.error("⚠️ 資料庫中無符合此自定義規格的型號，或該規格的動負荷無法滿足您設定的安全係數！")
 
@@ -440,8 +611,27 @@ with bottom_right:
                 st.write(prompt)
 
         # 2. 準備 context 並呼叫模型
-        context = f"推薦螺桿: {[rec['型號'] for rec in screw_recs[:3]]}, 計算參數: 導程 {lead}, 動負荷 {required_dynamic_load}"
-        response = rag_query(prompt, context)
+        screw_context = [
+            f"{rec['型號']} (系列 {screw_series(rec) or '未標示'}, "
+            f"外徑 {rec['公稱 外徑']:.0f} mm, 導程 {rec['導程']:.0f} mm, "
+            f"動負荷 {rec['動負荷 C (kfg)']:.0f} kgf, 狀態 {rec.get('推薦狀態', '合格')})"
+            for rec in screw_recs[:3]
+        ]
+        motor_context = [
+            f"{rec['Model']} (扭矩 {rec['Torque_Nm']:.2f} N·m, 最高轉速 {rec['Max_RPM']:.0f} rpm, "
+            f"狀態 {rec.get('推薦狀態', '合格')})"
+            for rec in motor_recs[:3]
+        ]
+        context = (
+            "\n【推薦結果】\n"
+            f"- 螺桿品牌: {screw_brand}\n"
+            f"- 推薦螺桿: {'; '.join(screw_context) if screw_context else '無'}\n"
+            f"- 馬達品牌: {motor_brand}\n"
+            f"- 推薦馬達: {'; '.join(motor_context) if motor_context else '無'}"
+        )
+        chat_history = build_chat_history(st.session_state.messages[:-1])
+        with st.spinner("AI 正在查詢資料並整理回答..."):
+            response = rag_query(prompt, context, chat_history)
         
         # 3. 儲存並顯示 AI 的新回應
         st.session_state.messages.append({'role': 'assistant', 'content': response})
