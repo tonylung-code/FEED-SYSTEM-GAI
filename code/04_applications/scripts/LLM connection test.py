@@ -4,6 +4,8 @@ import chromadb
 from pathlib import Path
 from collections import Counter
 import ollama
+import re
+
 def find_db_path(anchor_name="FEED-SYSTEM-GAI"):
     """自動尋找專案根目錄錨點"""
     # 從目前執行腳本的檔案位置開始向上溯源
