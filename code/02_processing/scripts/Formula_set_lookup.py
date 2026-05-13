@@ -78,3 +78,37 @@ def C_calculation():
     print(f"動負荷: {c} kfg")  
     return c
 c = C_calculation()
+
+#馬達扭矩計算
+def Motor_torque_calculation(guide, load, cutting_force):
+    w2 = load
+    hsp = guide
+    cof = 0.008
+    me = 0.9
+    Tt1 = (1 + cof) * hsp * w2 / (2 * pi * me) #kgf*mm
+    Tt2 = abs((1 - cof) * hsp * w2 / (2 * pi * me)) #kgf*mm
+    Tt = round(max(Tt1, Tt2) * 9.8 * 1e-3, 2) #N*m
+    
+    fc = cutting_force
+    Tc = round((fc * hsp * me) / (2*pi)* 9.8 * 1e-3, 2) #N*m
+
+    Trf = Tc + Tt
+    print(f"移動件所引起的摩擦扭矩: {Tt} N．mm, 軸向力引起的扭矩:{Tc} N．mm")
+    print(f"外加負荷引起之扭矩: {Trf} N．mm")
+    return Trf
+
+#馬達慣量計算
+def Motor_inertia_calculation(length, suitable_dr, load, guide):
+    proportion = 0.0078
+    L = length
+    g = 980
+    Js = pi * proportion * (L* 0.1 )* ((suitable_dr[-1]*0.1)**4) / (32* g ) # kgf*cm*s**2
+    W = load
+    hsp = guide*0.1
+    Jt = W / g * (hsp / 2 / pi)**2 #增加減速比考慮
+    JL = round(Js + Jt, 4)
+    print(f"負載慣量: {JL} kgf．cm．s2")
+    return JL
+Trf = Motor_torque_calculation(guide, load, cutting_force)
+print("=" *100)
+JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
