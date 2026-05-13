@@ -37,7 +37,7 @@ st.markdown("""
 @st.cache_data
 def load_screw_data():
     hiwin_df = pd.read_excel("data/HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
-    pmi_df = pd.read_excel("PMI_Final_Data_V3.xlsx", engine='openpyxl')
+    pmi_df = pd.read_excel("data/PMI_Optimized_Core.xlsx", engine='openpyxl')
     return hiwin_df, pmi_df
 
 @st.cache_data
@@ -232,7 +232,7 @@ def rag_query(query, context=""):
     
     # 呼叫 Ollama
     try:
-        response = ollama.chat(model='gemma4-gpu', messages=[
+        response = ollama.chat(model='gemma2:9b', messages=[
             {'role': 'system', 'content': '你是一位精通機械工程與 CNC 零組件的繁體中文 AI 助理。請務必使用繁體中文（zh-TW）回答使用者的所有問題。請依據提供的上下文與計算結果，經過嚴謹的邏輯思考後，給出專業、精確的建議。'},
             {'role': 'user', 'content': prompt}
         ])
