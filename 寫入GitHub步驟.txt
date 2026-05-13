@@ -34,3 +34,9 @@ git reset --hard origin/main
 
 強制恢復到最後一次提交：(改動後想復原並清除提交提醒)    
 git reset --hard HEAD
+
+＃強制對齊雲端
+確保本地知道遠端分支的最新狀態
+git fetch origin
+強制覆蓋本地分支
+git reset --hard origin/main
