@@ -1,146 +1,80 @@
-# 02_processing - 資料清理與參數處理
+# 02_processing - 規格資料處理與參數計算
 
-此階段負責對擷取結果進行深度清理、表格標準化、以及參數轉換計算。
+此資料夾負責把擷取到的表格與規格資料整理成可供選型、推薦與 RAG 使用的結構化資料。主要處理內容包含 HIWIN 表格清理、PMI 表格擷取、參數公式試算，以及建立 `semantic_text` 欄位。
 
-## 📁 目錄結構
+## 目前內容
 
-```
+```text
 02_processing/
-├── notebooks/           ← 資料處理與清理探索
+├── notebooks/
 │   ├── 上銀表格處裡.ipynb
-│   ├── 銀泰螺桿資料處裡.ipynb
 │   ├── 參數比對.ipynb
 │   └── 參數轉換公式.ipynb
-├── scripts/             ← 自動化處理指令碼
-│   └── 型錄表格處理(上銀銀泰).py
+├── scripts/
+│   └── PMI型錄表格擷取優化.py
 └── README.md
 ```
 
-## 🎯 使用流程
+## Notebook 說明
 
-### 資料清理（Notebooks）
+| 檔案 | 實際內容 |
+| --- | --- |
+| `上銀表格處裡.ipynb` | HIWIN 表格擷取與清理實驗。包含 PDF 文字座標排序、系列名稱擷取、表格欄位整理、數值轉換、`semantic_text` 生成與 Excel 輸出。 |
+| `參數比對.ipynb` | 將不同系列 sheet 合併或比對，並根據使用者輸入條件試算導程、螺桿最高轉速、直徑範圍、動負荷等選型參數。 |
+| `參數轉換公式.ipynb` | 保存與驗證選型計算公式，例如導程、臨界轉速、挫曲負荷、動負荷、馬達扭矩與慣量等計算邏輯。 |
 
-1. **上銀表格處裡.ipynb**
-   - 清理上銀滾珠螺桿規格表
-   - 標準化欄位名稱與數據格式
-   - 去除重複與無效資料
+## Script 說明
 
-2. **銀泰螺桿資料處裡.ipynb**
-   - 清理銀泰螺桿規格表
-   - 統一單位與數據精度
-   - 驗證資料完整性
+### `PMI型錄表格擷取優化.py`
 
-### 參數處理（Notebooks）
+PMI 銀泰型錄表格擷取與清理腳本。它會從 PDF 表格中整理出下列欄位：
 
-3. **參數比對.ipynb**
-   - 比較不同廠商的相同參數
-   - 尋找參數映射關係
-   - 建立參數對應表
+- `Series_Name`
+- `Source_Page`
+- `型號`
+- `外徑`
+- `導程`
+- `鋼珠直徑`
+- `循環圈數`
+- `動負荷`
+- `靜負荷`
+- `剛性`
+- `semantic_text`
 
-4. **參數轉換公式.ipynb**
-   - 實現參數之間的轉換公式
-   - 例如：轉速 → 線速、扭矩轉換等
-   - 驗證計算精度
+建議從專案根目錄明確指定輸入與輸出：
 
-### 自動化批處理（Scripts）
-
-```bash
-# 執行表格標準化處理
-cd code/02_processing/scripts
-python "型錄表格處理(上銀銀泰).py"
-
-# 輸出位置：code/outputs/
+```powershell
+python code/02_processing/scripts/PMI型錄表格擷取優化.py --pdf data/銀泰螺桿型錄.pdf --output data/PMI_Optimized_Core.xlsx
 ```
 
-## 📊 處理內容
+注意：此 script 內建的 `--pdf` 預設值是舊的 Mac 路徑，不符合目前 Windows 專案位置；請務必傳入 `--pdf`。
 
-### 清理流程
+## 主要輸入與輸出
 
-```
-原始資料 (JSON)
-    ↓
-格式化與標準化
-    ↓
-去除重複 / 驗證
-    ↓
-清理後的結構資料 (CSV/Excel)
-```
+| 類型 | 檔案 |
+| --- | --- |
+| PMI 原始 PDF | `data/銀泰螺桿型錄.pdf` |
+| PMI 正式輸出 | `data/PMI_Optimized_Core.xlsx` |
+| HIWIN 整理後資料 | `data/HIWIN_Final_Data_V1.xlsx` |
+| FANUC 整理後資料 | `data/FANUC_Specs.xlsx` |
+| 其他既有輸出 | `outputs/PMI_Optimized_Core.xlsx`、`code/HIWIN_Extracted_Data.xlsx` |
 
-### 參數轉換
+## 與後續流程的關係
 
-| 轉換類型 | 輸入 | 輸出 | 用途 |
-|---------|------|------|------|
-| 單位轉換 | mm/min | m/min | 統一標準 |
-| 性能計算 | 扭矩、轉速 | 功率 | 機械特性 |
-| 縮放轉換 | 相對值 | 絕對值 | 工程應用 |
+`03_embeddings/scripts/update_rag_specs.py` 會讀取下列正式資料：
 
-## ⚙️ 配置參數
+- `data/HIWIN_Final_Data_V1.xlsx`
+- `data/PMI_Optimized_Core.xlsx`
+- `data/FANUC_Specs.xlsx`
 
-### 資料清理
+因此只要更新了這些 Excel，請重新執行：
 
-```python
-# 清理閾值
-MIN_COMPLETENESS = 0.8  # 80% 以上欄位完整
-MAX_OUTLIER_RATIO = 0.05  # 異常值比例 < 5%
+```powershell
+python code/03_embeddings/scripts/update_rag_specs.py
 ```
 
-### 參數轉換
+## 維護注意事項
 
-```python
-# 常用轉換公式
-功率 (W) = 扭矩 (Nm) × 轉速 (rpm) / 9549
-線速 (m/min) = 螺距 (mm) × 轉速 (rpm) / 1000
-```
-
-## 📈 輸出格式
-
-### 清理後的資料
-
-- **CSV**：便於 Excel 打開與查看
-- **Excel**：多個 Sheet，分別儲存不同類別
-- **JSON**：程式化存取的標準格式
-
-### 參數映射表
-
-```json
-{
-  "上銀_滾珠螺桿": {
-    "承載能力": "額定負載",
-    "轉速": "最大轉速",
-    "精度等級": "重複精度"
-  }
-}
-```
-
-## 🔧 故障排查
-
-### 資料型別不匹配
-- 檢查原始資料的格式一致性
-- 手動調整型別轉換規則
-
-### 缺失值過多
-- 檢查 `MIN_COMPLETENESS` 閾值
-- 考慮是否該行資料本身就不完整
-
-### 轉換公式計算錯誤
-- 驗證輸入單位是否正確
-- 檢查轉換係數的精度
-
-## 📝 推薦流程
-
-1. **先用 Notebook 探索**
-   - 理解資料結構
-   - 測試清理邏輯
-   - 驗證轉換公式
-
-2. **再用 Script 批量處理**
-   - 自動化重複工作
-   - 產生標準化輸出
-   - 便於版本控制
-
-## 📋 檢查清單
-
-- [ ] 所有必要欄位都已標準化
-- [ ] 異常值已識別與標記
-- [ ] 參數轉換公式已驗證
-- [ ] 輸出資料已檢查完整性
+- `semantic_text` 是 RAG 與推薦說明的重要欄位，更新規格表時要確認仍有產生。
+- Notebook 中部分路徑是早期本機測試路徑，正式執行建議改成專案根目錄下的 `data/`。
+- 若 PMI 擷取列數異常，優先檢查 PDF 是否為同版型，以及 `looks_like_main_table()`、欄位位置與頁面表格線設定。

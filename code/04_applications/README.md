@@ -1,266 +1,127 @@
-# 04_applications - LLM 應用 & 服務
+# 04_applications - Streamlit 選型系統與 LLM/RAG 應用
 
-此階段集成前面的所有流程，實現 RAG（檢索增強生成）系統，提供智能查詢與回答功能。
+此資料夾負責把前面整理好的 Excel 規格資料與 ChromaDB RAG 資料庫串成可互動的應用。目前主要應用是 Streamlit 智慧選型介面，並透過 Ollama 進行本地 LLM 技術諮詢。
 
-## 📁 目錄結構
+## 目前內容
 
-```
+```text
 04_applications/
-├── notebooks/           ← LLM 整合與應用探索
+├── notebooks/
 │   └── LLM串接工程.ipynb
-├── scripts/             ← 生產環境應用服務
-│   └── app_simple.py
+├── scripts/
+│   ├── app_simple.py
+│   ├── app_simple_v3.py
+│   └── LLM connection test.py
 └── README.md
 ```
 
-## 🎯 使用流程
+## Notebook 說明
 
-### LLM 整合探索
+| 檔案 | 實際內容 |
+| --- | --- |
+| `LLM串接工程.ipynb` | ChromaDB 連線、`screw_specs` collection 檢索、Ollama Qwen/Gemma prompt 測試、RAG 與非 RAG 回答比較、檢索能力檢查。 |
 
-**LLM串接工程.ipynb**
-- 連接 LLM API（OpenAI / 本地模型）
-- 實現 RAG 邏輯
-  - 查詢向量資料庫
-  - 檢索相關文檔
-  - 提供上下文給 LLM
-- 提示詞工程優化
-- 測試不同查詢場景
+## Script 說明
 
-### 生產應用
+| 檔案 | 用途 | 狀態 |
+| --- | --- | --- |
+| `app_simple_v3.py` | 目前主要 Streamlit 應用。讀取 HIWIN/PMI/FANUC Excel，計算螺桿與馬達選型參數，推薦型號，並提供 RAG 技術諮詢。 | 建議使用 |
+| `app_simple.py` | 早期 Streamlit UI 原型。多數計算結果是固定示範值，RAG 尚未完成。 | 保留參考 |
+| `LLM connection test.py` | 命令列測試工具。連接 `screw_specs`，統計資料類型，並以 Ollama `gemma3n:e4b` 做互動問答測試。 | 測試/除錯用 |
 
-**app_simple.py**
-- 簡單的 Web 或 CLI 應用
-- 使用者與系統互動介面
-- 查詢、檢索、回答完整流程
+## 主要輸入
 
-## 🔗 系統架構
+`app_simple_v3.py` 會從專案根目錄讀取：
 
-```
-使用者查詢
-    ↓
-嵌入查詢文本
-    ↓
-向量資料庫搜尋 (top-k 相關文檔)
-    ↓
-格式化上下文
-    ↓
-送入 LLM 模型
-    ↓
-生成回答
-    ↓
-返回結果給使用者
+- `data/HIWIN_Final_Data_V1.xlsx`
+- `data/PMI_Optimized_Core.xlsx`
+- `data/FANUC_Specs.xlsx`
+- `databases/hiwin_vector_db`
+
+RAG collection：
+
+```text
+collection: screw_specs
 ```
 
-## 🤖 LLM 模型選擇
+如果資料庫尚未建立或需要更新，請先回到專案根目錄執行：
 
-### 雲端 API
-
-| 模型 | 提供者 | 特點 | 成本 |
-|------|--------|------|------|
-| gpt-4 | OpenAI | 智能、可靠 | 較高 |
-| gpt-3.5-turbo | OpenAI | 平衡效能 | 低 |
-| claude-3 | Anthropic | 上下文大 | 中等 |
-
-### 本地模型
-
-| 模型 | 參數 | 優勢 | 要求 |
-|------|------|------|------|
-| Llama 2 | 7B-70B | 開源、可控 | GPU 或 CPU |
-| Qwen | 7B-72B | 中文優化 | 中等 GPU |
-| Mistral | 7B | 快速、輕量 | 低資源 |
-
-## 📋 RAG 工作流
-
-### 1. 查詢處理
-
-```python
-query = "上銀螺桿的承載能力如何計算?"
-
-# 嵌入查詢
-query_embedding = embedding_model.encode(query)
-
-# 搜尋相關文檔
-relevant_docs = vector_db.search(
-    query_embedding,
-    top_k=5,
-    filter={"catalog": "HIWIN"}
-)
+```powershell
+python code/03_embeddings/scripts/update_rag_specs.py
 ```
 
-### 2. 上下文格式化
+## 啟動 Streamlit 應用
 
-```python
-context = "\n\n".join([
-    f"【文檔 {i+1}】\n來源：{doc['metadata']['page']}\n內容：{doc['text']}"
-    for i, doc in enumerate(relevant_docs)
-])
+從專案根目錄執行：
+
+```powershell
+streamlit run code/04_applications/scripts/app_simple_v3.py
 ```
 
-### 3. 提示詞組裝
+介面包含：
 
-```python
-prompt = f"""基於以下技術文檔，回答用戶的問題。
+- 使用者設計條件輸入
+- 導程、螺桿最高轉速、直徑範圍、動負荷等計算
+- HIWIN/PMI 螺桿推薦
+- FANUC 馬達匹配
+- 自定義規格探索
+- RAG 技術諮詢聊天視窗
 
-【參考文檔】
-{context}
+## Ollama 需求
 
-【使用者問題】
-{query}
+`app_simple_v3.py` 與 `LLM connection test.py` 都使用 Ollama。請先確認：
 
-【要求】
-- 直接引用文檔中的數據
-- 如果文檔中沒有相關資訊，明確說明
-- 提供精確的技術規格與計算過程
-"""
+```powershell
+ollama list
 ```
 
-### 4. LLM 推理
+目前程式中的模型名稱：
 
-```python
-response = llm.generate(
-    prompt,
-    max_tokens=500,
-    temperature=0.3  # 降低溫度提高確定性
-)
+- `app_simple_v3.py`：`gemma2:9b`
+- `LLM connection test.py`：`gemma3n:e4b`
+- `LLM串接工程.ipynb`：包含 `qwen2.5:7b` 與 `gemma3n:e4b` 測試片段
+
+如果本機模型名稱不同，需要同步修改程式中的 `ollama.chat()` 或 `ollama.generate()` model 參數。
+
+## RAG 流程
+
+```text
+使用者問題
+  ↓
+ChromaDB screw_specs 檢索
+  ↓
+取得規格資料與手冊 chunk
+  ↓
+組合目前選型計算結果與檢索內容
+  ↓
+送入 Ollama 模型
+  ↓
+回傳技術建議
 ```
 
-## 💬 提示詞工程
+## 除錯方式
 
-### 系統提示
+### 檢查資料庫是否可讀
 
-```
-你是工業機械型錄的技術助手。
-你的職責是基於提供的技術文檔回答用戶的詳細問題。
-重點關注：規格、性能、計算方法、應用場景。
+```powershell
+python code/03_embeddings/scripts/update_rag_specs.py --dry-run
 ```
 
-### 查詢範本
+### 重新建立資料庫
 
-```
-關於 [產品名稱]：
-- 規格查詢：「HIWIN 上銀 DFS2505 的最大轉速?」
-- 性能計算：「如何計算螺桿的負載承載力?」
-- 應用建議：「哪個型號螺桿適合高速應用?」
+```powershell
+python code/03_embeddings/scripts/update_rag_specs.py
 ```
 
-## 🎛️ 應用配置
+### 測試 Ollama 與 RAG 連線
 
-### 應用設定
-
-```python
-CONFIG = {
-    "llm_model": "gpt-3.5-turbo",
-    "embedding_model": "text-embedding-3-small",
-    "vector_db_path": "../databases/hiwin_vector_db",
-    "max_context_docs": 5,
-    "temperature": 0.3,
-    "max_tokens": 500,
-}
+```powershell
+python "code/04_applications/scripts/LLM connection test.py"
 ```
 
-### 搜尋策略
+## 維護注意事項
 
-```python
-# 混合搜尋（向量 + 關鍵詞）
-results = hybrid_search(
-    query=query,
-    vector_weight=0.7,
-    keyword_weight=0.3,
-    filters={"catalog": "HIWIN"}
-)
-```
-
-## 📈 性能優化
-
-### 快取機制
-
-```python
-# 快取常見查詢結果
-cache = {}
-if query in cache:
-    return cache[query]  # 直接返回
-else:
-    result = rag_pipeline(query)
-    cache[query] = result
-```
-
-### 批量處理
-
-```python
-# 批量嵌入多個查詢
-queries = [...many queries...]
-embeddings = batch_encode(queries, batch_size=32)
-```
-
-### 索引最佳化
-
-```python
-# 預先建立篩選索引
-vector_db.create_filter_index(
-    field="catalog",
-    values=["HIWIN", "PMI", "FANUC"]
-)
-```
-
-## 🔧 故障排查
-
-### LLM 回答不準確
-- 增加檢索的文檔數量
-- 改進提示詞設計
-- 驗證向量品質
-
-### 搜尋結果相關性低
-- 檢查嵌入模型品質
-- 調整搜尋參數
-- 考慮使用混合搜尋
-
-### 回應延遲高
-- 啟用結果快取
-- 使用更快的嵌入模型
-- 優化資料庫查詢
-
-### Token 成本高
-- 使用更便宜的模型
-- 優化上下文長度
-- 實現智能快取
-
-## 📊 評估指標
-
-| 指標 | 目標 | 測量方法 |
-|------|------|---------|
-| 準確性 | > 80% | 人工評估 |
-| 延遲 | < 2s | 計時測試 |
-| 相關性 | > 0.7 | Cosine 相似度 |
-| 成本 | 可控 | Token 統計 |
-
-## 📝 推薦流程
-
-1. **本地測試**
-   - 在 notebook 中測試完整流程
-   - 微調提示詞
-   - 驗證回答品質
-
-2. **建立應用**
-   - 開發簡單 CLI 或 Web 介面
-   - 集成所有組件
-   - 進行端對端測試
-
-3. **部署與監控**
-   - 部署到生產環境
-   - 監控性能指標
-   - 收集使用者反饋
-
-4. **持續改進**
-   - 分析常見查詢
-   - 優化提示詞
-   - 更新文檔資料庫
-
-## 📋 檢查清單
-
-- [ ] LLM API 連接正常
-- [ ] 向量嵌入功能正常
-- [ ] 資料庫查詢正常
-- [ ] 提示詞已測試
-- [ ] 應用介面已完成
-- [ ] 端對端流程已驗證
-- [ ] 性能指標達標
+- 執行 Streamlit 時請在專案根目錄，否則 `data/*.xlsx` 可能讀不到。
+- 如果 RAG 回答顯示功能不可用，請確認 `chromadb`、`ollama` 套件已安裝，且 Ollama 服務正在執行。
+- 更新 Excel 或 `code/outputs/*_final_chunks.json` 後，要先重建 `screw_specs`。
+- `app_simple.py` 不是目前主線版本，文件與測試請以 `app_simple_v3.py` 為準。

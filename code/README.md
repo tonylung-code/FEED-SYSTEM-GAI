@@ -1,257 +1,97 @@
-# 工業型錄 AI 提取與 RAG 系統
+# code 資料夾說明
 
-一個完整的工業機械型錄資訊提取、處理、向量化與 AI 查詢系統。
+此資料夾收納 Feed System GAI 的主要開發流程：型錄擷取、規格資料處理、向量資料庫建置，以及 Streamlit/LLM 應用。專案目前的核心資料來源放在根目錄 `data/`，RAG 資料庫放在根目錄 `databases/hiwin_vector_db/`。
 
-## 🎯 專案目標
+## 目錄結構
 
-從 PDF 型錄（上銀、銀泰、FANUC）中自動提取文字與規格資訊，建立向量資料庫，
-結合大語言模型（LLM）實現智能查詢與回答系統。
-
-## 📁 專案結構
-
-```
+```text
 code/
-├── 01_extraction/              ← PDF 文字與表格擷取
-│   ├── notebooks/              ← 互動式探索
-│   ├── scripts/                ← 自動化指令碼
-│   └── README.md
-│
-├── 02_processing/              ← 資料清理與參數處理
-│   ├── notebooks/              ← 清理與轉換
-│   ├── scripts/                ← 自動化處理
-│   └── README.md
-│
-├── 03_embeddings/              ← 向量化與資料庫
-│   ├── notebooks/              ← 嵌入與 ChromaDB
-│   └── README.md
-│
-├── 04_applications/            ← LLM 應用
-│   ├── notebooks/              ← RAG 系統設計
-│   ├── scripts/                ← 生產應用
-│   └── README.md
-│
-├── outputs/                    ← 中間結果與最終輸出
-│   ├── *_final_chunks.json    ← 擷取的文本塊
-│   ├── *_extraction_check.md  ← 擷取驗證結果
-│   └── catalog_*.{json,md}    ← 型錄擷取結果
-│
-├── databases/                  ← 向量資料庫
-│   └── hiwin_vector_db/       ← ChromaDB 實例
-│
-└── README.md                   ← 本檔案
+├── 01_extraction/        # PDF 文字、公式與初步 chunk 擷取
+├── 02_processing/        # 規格表處理、參數轉換、semantic_text 建立
+├── 03_embeddings/        # ChromaDB 檢查與 screw_specs collection 重建
+├── 04_applications/      # Streamlit 選型系統與 Ollama RAG 應用
+├── outputs/              # 已產生的擷取結果與檢查報告
+├── HIWIN_Extracted_Data.xlsx
+├── 銀泰螺桿型錄 切割 共67頁.pdf
+└── README.md
 ```
 
-## 🚀 快速開始
+## 流程總覽
 
-### 前置需求
-
-```bash
-# 已有虛擬環境
-source venv/Scripts/activate  # Windows: venv\Scripts\activate
-
-# 安裝依賴
-pip install -r requirements.txt
+```text
+data/*.pdf
+  ↓
+01_extraction
+PDF 文字、公式、手冊段落擷取，產生 JSON/Markdown chunk
+  ↓
+02_processing
+HIWIN/PMI/FANUC 規格表清理與計算欄位整理
+  ↓
+03_embeddings
+讀取 data/*.xlsx 與 code/outputs/*_final_chunks.json，重建 ChromaDB
+  ↓
+04_applications
+Streamlit 介面進行選型、推薦與 RAG 技術諮詢
 ```
 
-### 完整工作流
+## 各子資料夾重點
 
-#### 1️⃣ 提取階段
+| 資料夾 | 目前內容 | 重點檔案 |
+| --- | --- | --- |
+| `01_extraction` | PDF 擷取 notebook、PyMuPDF 擷取 script、OpenDataLoader 測試 script | `文字說明內容擷取(上銀 銀泰 FUNAC) V2.py` |
+| `02_processing` | HIWIN 表格整理 notebook、參數計算 notebook、PMI 表格擷取 script | `PMI型錄表格擷取優化.py` |
+| `03_embeddings` | ChromaDB 檢查 notebook、embedding 實驗 notebook、資料庫重建 script | `update_rag_specs.py` |
+| `04_applications` | Streamlit app、Ollama RAG 測試 script、LLM notebook | `app_simple_v3.py` |
+| `outputs` | 既有擷取結果、chunk 視覺化、extraction check 報告 | `*_final_chunks.json` |
 
-```bash
-cd code/01_extraction/scripts
-python "文字說明內容擷取(上銀 銀泰 FUNAC) V2.py"
+## 建議從專案根目錄執行
 
-# 或使用 notebook 進行互動式探索
-jupyter notebook ../notebooks/上銀型錄文字擷取.ipynb
+多數應用程式會用相對路徑讀取 `data/` 與 `databases/`，建議命令都從專案根目錄執行：
+
+```powershell
+cd "C:\Users\e11338\Desktop\Feed System GAI"
+.\venv\Scripts\Activate.ps1
 ```
 
-**輸出**：`code/outputs/*.json` 與 `code/outputs/*.md`
+## 常用命令
 
-#### 2️⃣ 處理階段
+### 檢查或重建 RAG 資料庫
 
-```bash
-cd code/02_processing/notebooks
-jupyter notebook 參數轉換公式.ipynb
-# 執行資料清理與參數轉換
+```powershell
+python code/03_embeddings/scripts/update_rag_specs.py --dry-run
+python code/03_embeddings/scripts/update_rag_specs.py
 ```
 
-**輸出**：清理後的結構資料
+`update_rag_specs.py` 會重建 `databases/hiwin_vector_db` 內的 `screw_specs` collection，資料來源包含：
 
-#### 3️⃣ 嵌入階段
+- `data/HIWIN_Final_Data_V1.xlsx`
+- `data/PMI_Optimized_Core.xlsx`
+- `data/FANUC_Specs.xlsx`
+- `code/outputs/HIWIN_final_chunks.json`
+- `code/outputs/PMI_final_chunks.json`
+- `code/outputs/FANUC_final_chunks.json`
 
-```bash
-cd code/03_embeddings/notebooks
-jupyter notebook chromadb資料庫處理與整合.ipynb
-# 向量化並儲存到 ChromaDB
+### 啟動主要 Streamlit 應用
+
+```powershell
+streamlit run code/04_applications/scripts/app_simple_v3.py
 ```
 
-**輸出**：`code/databases/hiwin_vector_db/`
+`app_simple_v3.py` 會讀取根目錄的 `data/*.xlsx` 與 `databases/hiwin_vector_db`。RAG 回答使用 Ollama，程式中目前預設模型為 `gemma2:9b`。
 
-#### 4️⃣ 應用階段
+### 重新擷取型錄文字與公式
 
-```bash
-cd code/04_applications/scripts
-python app_simple.py
+此 script 的輸出位置取決於執行時的目前目錄。若希望輸出集中到 `code/outputs/`，建議這樣執行：
 
-# 或執行 notebook 測試
-jupyter notebook ../notebooks/LLM串接工程.ipynb
+```powershell
+Push-Location code/outputs
+python ../01_extraction/scripts/"文字說明內容擷取(上銀 銀泰 FUNAC) V2.py"
+Pop-Location
 ```
 
-## 📊 關鍵檔案
+## 注意事項
 
-### 文本擷取
-
-| 檔案 | 用途 | 輸出 |
-|------|------|------|
-| 上銀型錄文字擷取.ipynb | 上銀滾珠螺桿擷取 | JSON + Markdown |
-| 銀泰型錄文字擷取.ipynb | 銀泰螺桿擷取 | JSON + Markdown |
-| 馬達資料處裡.ipynb | FANUC 規格表擷取 | Excel + CSV |
-
-### 資料處理
-
-| 檔案 | 用途 | 輸出 |
-|------|------|------|
-| 參數比對.ipynb | 參數映射對比 | CSV 對應表 |
-| 參數轉換公式.ipynb | 計算與轉換 | 轉換函式庫 |
-
-### 核心應用
-
-| 檔案 | 用途 | 功能 |
-|------|------|------|
-| embeding 工程.ipynb | 向量化實驗 | 模型測試 |
-| chromadb 整合.ipynb | 向量資料庫 | 搜尋驗證 |
-| LLM 串接工程.ipynb | RAG 系統 | 查詢與回答 |
-| app_simple.py | 應用服務 | Web/CLI 介面 |
-
-## 🔧 組態設定
-
-### 環境變數
-
-```bash
-# .env 檔案
-OPENAI_API_KEY=your_api_key_here
-EMBEDDING_MODEL=text-embedding-3-small
-LLM_MODEL=gpt-3.5-turbo
-VECTOR_DB_PATH=./databases/hiwin_vector_db
-```
-
-### 主要參數
-
-```python
-# 擷取配置
-CHUNK_SIZE = 600        # 文本塊大小
-OVERLAP = 100           # 塊重疊
-
-# 嵌入配置
-EMBEDDING_DIM = 1536    # 向量維度
-BATCH_SIZE = 100        # 批處理大小
-
-# LLM 配置
-TEMPERATURE = 0.3       # 回答確定性
-MAX_TOKENS = 500        # 最大生成長度
-MAX_CONTEXT_DOCS = 5    # 檢索文檔數
-```
-
-## 📈 工作流程圖
-
-```
-PDF 型錄
-   ↓
-[01] 文字擷取 ──→ Raw JSON/Markdown
-   ↓
-[02] 資料清理 ──→ 結構化資料 (CSV/Excel)
-   ↓
-[03] 向量化 ──→ ChromaDB (向量資料庫)
-   ↓
-[04] LLM 應用 ──→ RAG 系統
-   ↓
-使用者查詢 ──→ 智能回答
-```
-
-## 🎓 使用指南
-
-### 對於開發者
-
-1. **探索現有邏輯**
-   - 閱讀各階段的 README
-   - 執行 notebook 了解工作流
-
-2. **修改與優化**
-   - 調整過濾條件（`01_extraction`）
-   - 改進提示詞（`04_applications`）
-   - 優化模型配置（`03_embeddings`）
-
-3. **擴展功能**
-   - 新增資料來源
-   - 實現新的轉換公式
-   - 開發 API 端點
-
-### 對於使用者
-
-1. **查詢示例**
-   ```
-   「上銀螺桿的最大轉速是多少?」
-   「如何計算螺桿的承載能力?」
-   「哪個型號螺桿適合高速應用?」
-   ```
-
-2. **檢查結果**
-   - 驗證引用的文檔來源
-   - 檢查提供的規格數據
-   - 確認計算方法是否正確
-
-## 🔍 故障排查
-
-### 常見問題
-
-| 問題 | 解決方案 |
-|------|---------|
-| 找不到 PDF | 檢查 `../data/` 路徑 |
-| 擷取結果過少 | 調整頁面過濾閾值 |
-| 搜尋不準確 | 驗證嵌入模型品質 |
-| LLM 回答不好 | 改進提示詞設計 |
-
-### 調試步驟
-
-1. 查看各階段的 README
-2. 執行相應 notebook 檢查輸出
-3. 調整參數重新運行
-4. 檢查中間輸出檔案（`outputs/`）
-
-## 📚 相關資源
-
-- [ChromaDB 文檔](https://docs.trychroma.com/)
-- [OpenAI API 指南](https://platform.openai.com/docs/)
-- [Sentence Transformers](https://www.sbert.net/)
-- [PyMuPDF 文檔](https://pymupdf.readthedocs.io/)
-
-## 📝 維護與更新
-
-### 資料更新
-
-1. 新增 PDF 型錄到 `../data/`
-2. 更新 `01_extraction/scripts` 中的 `CATALOGS`
-3. 重新執行擷取流程
-4. 更新向量資料庫
-
-### 模型更新
-
-- 定期測試新的嵌入模型
-- 評估 LLM 性能
-- 監控成本與延遲
-
-## 🤝 貢獻指南
-
-- 改進提示詞工程
-- 優化搜尋演算法
-- 新增功能或整合
-- 改進文檔
-
-## 📞 支援
-
-遇到問題或有建議？請查閱各階段的 README 或聯絡開發團隊。
-
----
-
-**最後更新**：2026-04-20  
-**版本**：1.0
+- `code/outputs` 內已有一批現成的 `HIWIN/PMI/FANUC_final_chunks.json`，目前 RAG 重建會使用這些檔案。
+- `02_processing/scripts/PMI型錄表格擷取優化.py` 的內建預設 PDF 路徑不是目前 Windows 專案路徑，請執行時明確傳入 `--pdf` 與 `--output`。
+- `04_applications/scripts/app_simple.py` 是較早期的靜態 UI 原型；目前較完整的版本是 `app_simple_v3.py`。
+- `03_embeddings/notebooks/embeding 工程.ipynb` 保留了較早期的 embedding 實驗，正式更新資料庫建議使用 `scripts/update_rag_specs.py`。
