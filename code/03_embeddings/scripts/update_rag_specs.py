@@ -254,7 +254,10 @@ def rebuild_collection(records: list[dict[str, Any]]) -> int:
         settings=Settings(anonymized_telemetry=False),
     )
 
-    existing = [collection.name for collection in client.list_collections()]
+    existing = [
+        collection if isinstance(collection, str) else collection.name
+        for collection in client.list_collections()
+    ]
     if COLLECTION_NAME in existing:
         client.delete_collection(COLLECTION_NAME)
 
