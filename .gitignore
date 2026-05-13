@@ -1,6 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
 venv/
 .venv/
+
+# Environment variables
+.env
+
+# IDE / Editor
 .vscode/
-__pycache__/
-*.pyc
+
+# OS files
 .DS_Store
+
+# Python runtime
+.Python
