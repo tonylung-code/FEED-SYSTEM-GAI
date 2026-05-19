@@ -5,8 +5,8 @@ acceleration = "" #加速度
 reduction_ratio = 1 #減速比
 load = 775 #負載
 cutting_force = 343 #切削力
-length = 924 # 螺桿長度，兩端軸承間距
-preload_rate = 0.05 #預壓率
+length = 924 # 行程
+preload_rate = 0.03 #預壓率
 axis = ["x", "y", "z"]
 gravity_axis_YN = True #判斷重力軸
 guide = maximum_feed_rate / (motor_max_speed * reduction_ratio)
@@ -19,11 +19,14 @@ guide = maximum_feed_rate / (motor_max_speed * reduction_ratio) #導程
 
 #直徑計算
 def Diameter_calculation():
-    Nm = (maximum_feed_rate / guide) * 0.5 #臨界轉速
+    Nm = (maximum_feed_rate / guide) * 0.5 #臨界轉速(螺桿轉速)
 
-    #由導螺桿臨界轉速估算導螺桿桿徑
+    #由導螺桿臨界轉速(DmN)估算導螺桿桿徑
     f = [9.7, 15.1, 21.9, 3.4] #[支-支, 固-支, 固-固, 固-自]
     dr_n = round((Nm * length**2 / f[2]) * 1e-7, 0) # dr = (n * (length**2) / f) * (10**-7)
+
+    
+    #拉伸負荷估算導螺桿桿徑
 
     #由挫曲負荷估算導螺桿桿徑
     if gravity_axis_YN:
@@ -74,10 +77,16 @@ def C_calculation():
         ff = load * cof 
         p = (cutting_force + ff)
 
-    c = round(p / 3 / preload_rate, 0)
+    c = round(p * 3 / preload_rate, 0)
     print(f"動負荷: {c} kfg")  
     return c
 c = C_calculation()
+
+# 算出直徑的推薦值後使用型錄中有的值徑算出實際挫曲負荷及臨界轉速
+
+#計算剛性
+#螺桿剛性-1 + 軸承剛性-1 + 螺帽剛性-1
+#軸承內徑為型號前兩位數字，設定值為螺桿值徑-10 取最接近值 
 
 #馬達扭矩計算
 def Motor_torque_calculation(guide, load, cutting_force):
@@ -112,3 +121,6 @@ def Motor_inertia_calculation(length, suitable_dr, load, guide):
 Trf = Motor_torque_calculation(guide, load, cutting_force)
 print("=" *100)
 JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
+
+
+
