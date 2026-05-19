@@ -126,7 +126,7 @@ def C_calculation(cutting_force, load, gravity_axis_YN, preload_rate):
 c = C_calculation(cutting_force, load, gravity_axis_YN, preload_rate)
 
 
-# 算出直徑的推薦值後使用型錄中有的值徑算出實際挫曲負荷及臨界轉速
+# 算出直徑的推薦值後使用型錄中有的值徑算出實際挫曲負荷及臨界轉速，驗證
 def verify_ballscrew_safety(dr_F, length, support_type="fixed_supported"):
     dr = dr_F - 4
     support_factors = {
