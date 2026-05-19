@@ -192,11 +192,14 @@ def Motor_inertia_calculation(length, suitable_dr, load, guide):
     proportion = 0.0078
     L = length
     g = 980
-    Js = pi * proportion * (L* 0.1 )* ((suitable_dr[-1]*0.1)**4) / (32* g ) # kgf*cm*s**2
+    Js_raw = pi * proportion * (L* 0.1 )* ((suitable_dr[-1]*0.1)**4) / (32* g ) # kgf*cm*s**2
     W = load
-    hsp = guide*0.1
-    Jt = W / g * (hsp / 2 / pi)**2 #增加減速比考慮
-    JL = round(Js + Jt, 4)
+    hsp = guide * 0.1
+    Jt_raw = W / g * (hsp / 2 / math.pi)**2 #增加減速比考慮
+    Js_motor = Js_raw * (reduction_ratio ** 2)
+    Jt_motor = Jt_raw * (reduction_ratio ** 2)
+    JL = round(Js_motor + Jt_motor, 4)
+    print(f"公稱外徑_mm: {suitable_dr[-1]}")
     print(f"負載慣量: {JL} kgf．cm．s2")
     return JL
 Trf = Motor_torque_calculation(guide, load, cutting_force)
