@@ -11,6 +11,7 @@ git push
 
 結合輸入
 git add . && git commit -m "update" && git push
+git add . && git commit -m "formula set update" && git push
 ------------------------------------------
 開工
 

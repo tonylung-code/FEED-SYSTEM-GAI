@@ -6,28 +6,64 @@ reduction_ratio = 1 #減速比
 load = 775 #負載
 cutting_force = 343 #切削力
 length = 924 # 行程
-preload_rate = 0.03 #預壓率
+preload_rate = 0.05 #預壓率
 axis = ["x", "y", "z"]
 gravity_axis_YN = True #判斷重力軸
-guide = maximum_feed_rate / (motor_max_speed * reduction_ratio)
-N = maximum_feed_rate / guide #螺桿最高轉速
+support_type = "fixed_supported" #支撐類型
 
 from math import pi
+import math
+import pandas as pd
+
+def Guide_list():
+    hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
+    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core.xlsx", engine='openpyxl')
+    hiwin_guides = hiwin_df["導程"].unique().tolist()
+    pmi_guides = pmi_df["導程"].unique().tolist()
+    result = list(set(hiwin_guides) | set(pmi_guides))
+    print(f"HIWIN導程選項: {hiwin_guides}")
+    print(f"PMI導程選項: {pmi_guides}")
+    print(result)
+
+def Diameter_list():
+    hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
+    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core.xlsx", engine='openpyxl')
+    hiwin_guides = hiwin_df["公稱 外徑"].unique().tolist()
+    pmi_guides = pmi_df["公稱 外徑"].unique().tolist()
+    result = list(set(hiwin_guides) | set(pmi_guides))
+    print(f"HIWIN公稱外徑選項: {hiwin_guides}")
+    print(f"PMI公稱外徑選項: {pmi_guides}")
+    print(result)
+
 
 # 導程 & 最大轉速，最大進給速率 = 導程 * 最大轉速 * 減速比
-guide = maximum_feed_rate / (motor_max_speed * reduction_ratio) #導程
+def Guide_calculation(maximum_feed_rate, motor_max_speed, reduction_ratio):
+    guide = maximum_feed_rate / (motor_max_speed * reduction_ratio) #導程
+    guide_list = [2.5, 2.54, 4.0, 5.0, 6.0, 2.0, 8.0, 5.08, 10.0, 3, 12.0, 15.0, 16.0, 20.0, 24, 25.0, 30.0, 32.0, 35.0, 36.0, 40.0, 50.0, 60]
+    guide_f = min(guide_list, key=lambda x: abs(x - guide))
+    print(f"計算出的導程: {guide}mm, 最接近的導程選項: {guide_f}mm")
+
+    return guide_f
+guide = Guide_calculation(maximum_feed_rate, motor_max_speed, reduction_ratio)
 
 #直徑計算
-def Diameter_calculation():
-    Nm = (maximum_feed_rate / guide) * 0.5 #臨界轉速(螺桿轉速)
+def Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_feed_rate, guide, support_type):
+    support_factors = {
+        "supported_supported": {"f": 9.7, "N": 1.0},
+        "fixed_supported": {"f": 15.1, "N": 2.0},
+        "fixed_fixed": {"f": 21.9, "N": 4.0},
+        "fixed_free": {"f": 3.4, "N": 0.25}
+    }
+    
+    f_val = support_factors[support_type]["f"]
+    N_val = support_factors[support_type]["N"]
+    
+    Nm = (maximum_feed_rate / guide) #臨界轉速(螺桿轉速)
 
     #由導螺桿臨界轉速(DmN)估算導螺桿桿徑
-    f = [9.7, 15.1, 21.9, 3.4] #[支-支, 固-支, 固-固, 固-自]
-    dr_n = round((Nm * length**2 / f[2]) * 1e-7, 0) # dr = (n * (length**2) / f) * (10**-7)
-
-    
-    #拉伸負荷估算導螺桿桿徑
-
+    #安全係數 (α = 0.8)
+    dr_n = math.ceil((Nm * length**2) / (0.8 * f_val * (10**7)))# dr = (n * (length**2) / f) * (10**-7)
+  
     #由挫曲負荷估算導螺桿桿徑
     if gravity_axis_YN:
         p = (load + cutting_force) * 2
@@ -36,17 +72,24 @@ def Diameter_calculation():
        ff = load * cof 
        p = (cutting_force + ff) * 2
     E = 21000 #kgf/mm2
-    n = [4.0, 2.0, 0.25] #[固-支, 固-固, 固-自]
-    dr_p = round((p * 64 * (length**2) / (n[0] * (pi**3) * E))**0.25, 0)
+    dr_p =  math.ceil((p * 64 * (length**2) / (N_val * (pi**3) * E))**0.25)
+
+    #拉伸負荷估算導螺桿桿徑
+    allowable_stress = 14.7 
+    #因負載 p*2 ，在拉伸公式中已有安全係數，則 p*0.5 修正回來
+    dr_t =  math.ceil(math.sqrt((4 * (p *0.5)) / (math.pi * allowable_stress))) 
+    
     #取大值
-    print(f"由挫曲負荷估算導螺桿桿徑: {dr_p}mm, 由導螺桿臨界轉速估算導螺桿桿徑: {dr_n}mm")
-    dr_F =  max(dr_n, dr_p)
+    print(f"由挫曲負荷估算導螺桿桿徑: {dr_p}mm, 由導螺桿臨界轉速估算導螺桿桿徑: {dr_n}mm, 由拉伸負荷估算導螺桿桿徑: {dr_t}mm")
+    dr_F =  max(dr_n, dr_p, dr_t)
+    dr_F = dr_F + 4
+
     #由DN估算導螺桿桿徑
-    dr_DN = round(150000 / N, 0)
+    dr_DN = round(150000 / Nm, 0)
     print(f"直徑下限: {dr_F}mm, 直徑上限: {dr_DN}mm")
     print(f"{dr_F}mm < 螺桿直徑 < {dr_DN}mm")
 
-    d_list = [12, 14, 15, 16, 20, 25, 28, 32, 36, 40, 45, 50, 55, 63, 70, 80, 100]
+    d_list = [8, 10, 12, 14, 15, 16, 20, 25, 28, 32, 36, 38, 40, 45, 50, 55, 60, 63, 70, 80, 100]
     suitable_dr = []
     cunt = 0
     found_any = False
@@ -61,14 +104,14 @@ def Diameter_calculation():
         suitable_dr.append(d_list[cunt+1])
     print(suitable_dr)
 
-    return dr_F, dr_DN, suitable_dr
-dr_F, dr_DN, suitable_dr = Diameter_calculation()
+    return dr_F, dr_DN, suitable_dr, p, dr_t
+dr_F, dr_DN, suitable_dr, p, dr_t = Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_feed_rate, guide, support_type)
 print("="*100)
 print(f"導程: {guide}")
 print("="*100)
 
 #動負荷計算
-def C_calculation():
+def C_calculation(cutting_force, load, gravity_axis_YN, preload_rate):
     
     if gravity_axis_YN:
             p = (load + cutting_force)
@@ -77,12 +120,50 @@ def C_calculation():
         ff = load * cof 
         p = (cutting_force + ff)
 
-    c = round(p * 3 / preload_rate, 0)
+    c = round(p / 3 / preload_rate, 0)
     print(f"動負荷: {c} kfg")  
     return c
-c = C_calculation()
+c = C_calculation(cutting_force, load, gravity_axis_YN, preload_rate)
+
 
 # 算出直徑的推薦值後使用型錄中有的值徑算出實際挫曲負荷及臨界轉速
+def verify_ballscrew_safety(dr_F, length, support_type="fixed_supported"):
+    dr = dr_F - 4
+    support_factors = {
+        "supported_supported": {"f": 9.7, "N": 1.0},
+        "fixed_supported": {"f": 15.1, "N": 2.0},
+        "fixed_fixed": {"f": 21.9, "N": 4.0},
+        "fixed_free": {"f": 3.4, "N": 0.25}
+    }
+    
+    f_val = support_factors[support_type]["f"]
+    N_val = support_factors[support_type]["N"]
+
+    # --- 反推 1：容許臨界轉速 (rpm) ---
+    # 依據通用/PMI公式，並乘上安全係數 0.8
+    allowable_speed = 0.8 * (f_val * dr * (10**7)) / (length ** 2)
+
+    # --- 反推 2：容許最大壓縮力/挫曲負荷 (kgf) ---
+    # 依據尤拉公式推導，安全係數 alpha 取 0.5
+    E = 21000
+    alpha = 0.5
+    I = (math.pi * (dr ** 4)) / 64
+    allowable_buckling = alpha * (N_val * (math.pi ** 2) * E * I) / (length ** 2)
+
+    # --- 反推 3：容許最大拉伸力 (kgf) ---
+    # 依據應力公式推導
+    allowable_stress = 14.7
+    A = (math.pi * (dr ** 2)) / 4
+    allowable_tensile = allowable_stress * A
+
+    return allowable_speed, allowable_buckling, allowable_tensile
+
+allowable_speed, allowable_buckling, allowable_tensile = verify_ballscrew_safety(dr_F, length, support_type="fixed_supported")
+print(f"公稱外徑_mm: {dr_F}")
+print(f"容許臨界轉速_rpm: {round(allowable_speed, 2)}")
+print(f"容許最大壓縮力(挫曲)_kgf: {round(allowable_buckling, 2)}")
+print(f"容許最大拉伸力_kgf: {round(allowable_tensile, 2)}")
+print("="*100)
 
 #計算剛性
 #螺桿剛性-1 + 軸承剛性-1 + 螺帽剛性-1
@@ -121,6 +202,5 @@ def Motor_inertia_calculation(length, suitable_dr, load, guide):
 Trf = Motor_torque_calculation(guide, load, cutting_force)
 print("=" *100)
 JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
-
-
-
+print()
+print()
