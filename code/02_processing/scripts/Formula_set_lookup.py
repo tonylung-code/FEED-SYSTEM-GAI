@@ -9,15 +9,22 @@ length = 924 # 行程
 preload_rate = 0.05 #預壓率
 axis = ["x", "y", "z"]
 gravity_axis_YN = True #判斷重力軸
-support_type = "fixed_supported" #支撐類型
+support_type = "fixed_supported" #支撐類型["supported_supported", "fixed_supported", "fixed_fixed", "fixed_free"]
+combination = "DF" #組合類型 ["DF", "DFD", "DFF"]
 
 from math import pi
 import math
 import pandas as pd
 
+pd.set_option('display.unicode.east_asian_width', True)
+pd.set_option('display.unicode.ambiguous_as_wide', True)
+
+hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
+pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core_v2.xlsx", engine='openpyxl')
+
 def Guide_list():
     hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
-    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core.xlsx", engine='openpyxl')
+    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core_v2.xlsx", engine='openpyxl')
     hiwin_guides = hiwin_df["導程"].unique().tolist()
     pmi_guides = pmi_df["導程"].unique().tolist()
     result = list(set(hiwin_guides) | set(pmi_guides))
@@ -27,7 +34,7 @@ def Guide_list():
 
 def Diameter_list():
     hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
-    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core.xlsx", engine='openpyxl')
+    pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core_v2.xlsx", engine='openpyxl')
     hiwin_guides = hiwin_df["公稱 外徑"].unique().tolist()
     pmi_guides = pmi_df["公稱 外徑"].unique().tolist()
     result = list(set(hiwin_guides) | set(pmi_guides))
@@ -91,24 +98,27 @@ def Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_f
 
     d_list = [8, 10, 12, 14, 15, 16, 20, 25, 28, 32, 36, 38, 40, 45, 50, 55, 60, 63, 70, 80, 100]
     suitable_dr = []
-    cunt = 0
+    last_idx = 0
     found_any = False
     for diameter in range(len(d_list)):
         # 同時符合強度要求 (dr_F) 且在轉速限制內 (dr_DN)
         
-        if d_list[diameter] >= dr_F and d_list[diameter] <= dr_DN:
-            suitable_dr.append(d_list[diameter])
-            cunt = diameter
-            found_any = True
-    if found_any and cunt+1 < len(d_list):
-        suitable_dr.append(d_list[cunt+1])
+        current_d = d_list[diameter]
+
+        # 1. 使用 Pythonic 的連續比較語法
+        if dr_F <= current_d <= dr_DN:
+            suitable_dr.append(current_d)
+            last_idx = diameter
+
+    suitable_dr.extend(d_list[last_idx + 1 : last_idx + 4])
+
     print(suitable_dr)
 
+    print("="*100)
+    print(f"導程: {guide}")
+    print("="*100)
     return dr_F, dr_DN, suitable_dr, p, dr_t
 dr_F, dr_DN, suitable_dr, p, dr_t = Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_feed_rate, guide, support_type)
-print("="*100)
-print(f"導程: {guide}")
-print("="*100)
 
 #動負荷計算
 def C_calculation(cutting_force, load, gravity_axis_YN, preload_rate):
@@ -124,7 +134,6 @@ def C_calculation(cutting_force, load, gravity_axis_YN, preload_rate):
     print(f"動負荷: {c} kfg")  
     return c
 c = C_calculation(cutting_force, load, gravity_axis_YN, preload_rate)
-
 
 # 算出直徑的推薦值後使用型錄中有的值徑算出實際挫曲負荷及臨界轉速，驗證
 def verify_ballscrew_safety(dr_F, length, support_type="fixed_supported"):
@@ -156,19 +165,133 @@ def verify_ballscrew_safety(dr_F, length, support_type="fixed_supported"):
     A = (math.pi * (dr ** 2)) / 4
     allowable_tensile = allowable_stress * A
 
+    print(f"公稱外徑_mm: {dr_F}")
+    print(f"容許臨界轉速_rpm: {round(allowable_speed, 2)}")
+    print(f"容許最大壓縮力(挫曲)_kgf: {round(allowable_buckling, 2)}")
+    print(f"容許最大拉伸力_kgf: {round(allowable_tensile, 2)}")
+    print("="*100)
     return allowable_speed, allowable_buckling, allowable_tensile
-
 allowable_speed, allowable_buckling, allowable_tensile = verify_ballscrew_safety(dr_F, length, support_type="fixed_supported")
-print(f"公稱外徑_mm: {dr_F}")
-print(f"容許臨界轉速_rpm: {round(allowable_speed, 2)}")
-print(f"容許最大壓縮力(挫曲)_kgf: {round(allowable_buckling, 2)}")
-print(f"容許最大拉伸力_kgf: {round(allowable_tensile, 2)}")
-print("="*100)
+
+from typing import List, Dict, Any
+#型號比對
+def Model_lookup(hiwin_df, pmi_df, suitable_dr, guide, c):
+    """
+    根據計算出的參數，於 HIWIN 與 PMI 資料庫中查找最佳滾珠螺桿型號。
+    
+    :param hiwin_df: HIWIN 螺桿型錄 DataFrame
+    :param pmi_df: PMI 螺桿型錄 DataFrame
+    :param suitable_dr: 容許的公稱直徑清單 (例如: [25, 32])
+    :param guide: 目標導程
+    :param c: 最低要求之動負荷
+    :return: 包含兩品牌推薦結果的 Dictionary
+    """
+
+    def _search_logic(df: pd.DataFrame, brand_name: str) -> Any:
+        """內部搜尋邏輯，確保程式碼不重複 (DRY 原則)"""
+        if df.empty:
+            return f"{brand_name} 資料庫為空"
+            
+        # 1. 取得該品牌可用導程，依距離排序並取前 4 名
+        available_guides = sorted(df["導程"].unique(), key=lambda x: abs(x - guide))
+        search_guides = available_guides[:4]
+        
+        # 2. 階層搜尋 (布林遮罩扁平化)
+        for current_g in search_guides:
+            mask = (
+                (df["導程"] == current_g) & 
+                (df["公稱 外徑"].isin(suitable_dr)) & 
+                (df["動負荷 C (kfg)"] >= c)
+            )
+            
+            matched_df = df[mask]
+            
+            if not matched_df.empty:
+                # 1. 導程 (由低到高 -> True)
+                # 2. 公稱 外徑 (由低到高 -> True)
+                # 3. 動負荷 C (kfg) (由高到低 -> False)
+                sorted_df = matched_df.sort_values(
+                    by=["系列", "導程", "公稱 外徑", "動負荷 C (kfg)"], 
+                    ascending=[True, True, True, False]
+                )
+                
+                # 定義輸出的欄位清單
+                target_cols = ["系列", "型號", "公稱 外徑", "導程", "動負荷 C (kfg)", "剛性 kfg/umk"]
+                
+                # 確保要求的欄位真的存在於 Excel 中
+                valid_cols = [col for col in target_cols if col in sorted_df.columns]
+
+                return sorted_df[valid_cols]
+            
+        clean_guides = [int(g) if g % 1 == 0 else round(float(g), 1) for g in search_guides]
+
+        return f"在最接近的導程 {clean_guides} 中，無符合外徑與動負荷條件之規格"
+
+
+    # 執行比對並組裝結果
+    results = {
+        "HIWIN": _search_logic(hiwin_df, "HIWIN"),
+        "PMI": _search_logic(pmi_df, "PMI")
+    }
+    
+    return results
 
 #計算剛性
 #螺桿剛性-1 + 軸承剛性-1 + 螺帽剛性-1
-#軸承內徑為型號前兩位數字，設定值為螺桿值徑-10 取最接近值 
+#軸承內徑為型號前兩位數字，設定值為螺桿值徑-10 取最接近值
 
+def Rigidity_calculation(recommended_dict, length, combination):
+
+    """
+    針對查詢結果字典中的每一支螺桿，計算總剛性並新增至表格中。
+    
+    :param recommended_dict: Model_lookup 產出的結果字典 {"HIWIN": df, "PMI": df}
+    :param bearing_df: 軸承資料庫 DataFrame
+    :param length: 螺桿無負荷長度 (mm)
+    :param combination: 軸承排列方式 ("DF", "DFD", "DFF")
+    """
+
+    K_bearing = {
+    "品牌": ["NSK", "NSK", "NSK", "NSK", "NSK", "NSK", "NSK","NSK", "NSK","NSK", "NSK", "NSK", "NSK"],
+    "型號": ["17TAC 47B", "20TAC 47B", "25TAC 62B", "30TAC 62B", "35TAC 72B", "40TAC 72B", "40TAC 90B","45TAC 75B", "45TAC 100B","50TAC 100B", "55TAC 100B", "55TAC 120B", "60TAC 120B"],
+    "內徑_mm": [17, 20, 25, 30, 35, 40, 40, 45, 45, 50, 55, 55, 60],
+    "剛性_DF_N/um": [750, 750, 1000, 1030, 1180, 1230, 1320, 1270 ,1520, 1570, 1570, 1760, 1760], 
+    "剛性_DFD_N/um": [1080, 1080, 1470, 1520, 1710, 1810, 1960, 1910, 2210, 2300, 2300, 2650, 2650],
+    "剛性_DFF_N/um": [1470, 1470, 1960, 2010, 2350, 2400, 2650, 2550, 3000, 3100, 3100, 3550, 3550]
+    }
+    K_bearing_df = pd.DataFrame(K_bearing)
+    # print(K_bearing_df.to_markdown())
+    # 1. 估算根徑 (公稱外徑 - 粗估鋼珠直徑4mm)
+    def calc_single_row(row):
+        D = row["公稱 外徑"]
+        catalog_K = row["剛性 kfg/umk"]  # 單位: kgf/um
+        dr = D - 4
+
+        #螺桿軸剛性 Ks
+        # 參考上銀公式 M36
+        K_s = 16.8 * (dr ** 2) / length
+
+        #螺帽實際剛性
+        # 參考上銀公式 M38 / 銀泰規範
+        K_n = 0.8 * catalog_K
+
+        # 支撐軸承剛性 Kb (常數預設)
+        d = dr - 10
+        db = min(K_bearing_df["內徑_mm"].unique(), key=lambda x: abs(x - d))
+        col_name = f"剛性_{combination}_N/um"
+        K_b_N_um = K_bearing_df[K_bearing_df["內徑_mm"] == db][col_name].values[0]
+        
+        K_b = K_b_N_um/9.81
+        #總剛性計算
+        K_total = round(1 / (1/K_s + 1/K_n + 1/K_b), 2)
+        return K_total 
+    
+    for brand, df in recommended_dict.items():
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            # 將計算結果新增為一個新欄位
+            df["總剛性 (kgf/um)"] = df.apply(calc_single_row, axis=1)
+            
+    return recommended_dict
 #馬達扭矩計算
 def Motor_torque_calculation(guide, load, cutting_force):
     w2 = load
@@ -201,9 +324,26 @@ def Motor_inertia_calculation(length, suitable_dr, load, guide):
     JL = round(Js_motor + Jt_motor, 4)
     print(f"公稱外徑_mm: {suitable_dr[-1]}")
     print(f"負載慣量: {JL} kgf．cm．s2")
+    print("=" *100)
     return JL
 Trf = Motor_torque_calculation(guide, load, cutting_force)
-print("=" *100)
 JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
+
 print()
 print()
+
+def main() -> None:
+    results = Model_lookup(hiwin_df, pmi_df, suitable_dr, guide, c)
+    final_results = Rigidity_calculation(results, length, combination="DF")
+    print("螺桿推薦型號:")
+    for brand, result in final_results.items():
+        print(f"\n[{brand}]")
+        # 判斷如果是 DataFrame，就使用無索引且對齊的字串格式輸出
+        if isinstance(result, pd.DataFrame):
+            print(result.to_string(index = False))
+        else:
+            print(result)
+    print("=" *100)
+
+if __name__ == "__main__":
+    main()
