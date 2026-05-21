@@ -1,6 +1,6 @@
 ### 指定輸入參數
 maximum_feed_rate = 48000 #最大進給速率, mm/min
-motor_max_speed = 4000 #馬達最高轉速，預設3000 rpm
+motor_max_speed = 3000 #馬達最高轉速，預設3000 rpm
 acceleration = "" #加速度
 reduction_ratio = 1 #減速比
 load = 775 #負載
@@ -10,7 +10,7 @@ preload_rate = 0.05 #預壓率
 axis = ["x", "y", "z"]
 gravity_axis_YN = True #判斷重力軸
 support_type = "fixed_supported" #支撐類型["supported_supported", "fixed_supported", "fixed_fixed", "fixed_free"]
-combination = "DF" #組合類型 ["DF", "DFD", "DFF"]
+combination = "DF" #軸承組合類型 ["DF", "DFD", "DFF"]
 
 from math import pi
 import math
@@ -110,7 +110,7 @@ def Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_f
             suitable_dr.append(current_d)
             last_idx = diameter
 
-    suitable_dr.extend(d_list[last_idx + 1 : last_idx + 4])
+    #suitable_dr.extend(d_list[last_idx + 1 : last_idx + 4])
 
     print(suitable_dr)
 
@@ -211,8 +211,8 @@ def Model_lookup(hiwin_df, pmi_df, suitable_dr, guide, c):
                 # 2. 公稱 外徑 (由低到高 -> True)
                 # 3. 動負荷 C (kfg) (由高到低 -> False)
                 sorted_df = matched_df.sort_values(
-                    by=["系列", "導程", "公稱 外徑", "動負荷 C (kfg)"], 
-                    ascending=[True, True, True, False]
+                    by=["導程", "公稱 外徑", "動負荷 C (kfg)"], 
+                    ascending=[True, True, False]
                 )
                 
                 # 定義輸出的欄位清單
