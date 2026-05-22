@@ -49,7 +49,7 @@ def Guide_calculation(maximum_feed_rate, motor_max_speed, reduction_ratio):
     guide = maximum_feed_rate / (motor_max_speed * reduction_ratio) #導程
     guide_list = [2.5, 2.54, 4.0, 5.0, 6.0, 2.0, 8.0, 5.08, 10.0, 3, 12.0, 15.0, 16.0, 20.0, 24, 25.0, 30.0, 32.0, 35.0, 36.0, 40.0, 50.0, 60]
     guide_f = min(guide_list, key=lambda x: abs(x - guide))
-    print(f"計算出的導程: {guide}mm, 最接近的導程選項: {guide_f}mm")
+    #print(f"計算出的導程: {guide}mm, 最接近的導程選項: {guide_f}mm")
 
     return guide_f
 #guide = Guide_calculation(maximum_feed_rate, motor_max_speed, reduction_ratio)
@@ -88,14 +88,14 @@ def Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_f
     dr_t =  math.ceil(math.sqrt((4 * (p *0.5)) / (math.pi * allowable_stress))) 
     
     #取大值
-    print(f"由挫曲負荷估算導螺桿桿徑: {dr_p}mm, 由導螺桿臨界轉速估算導螺桿桿徑: {dr_n}mm, 由拉伸負荷估算導螺桿桿徑: {dr_t}mm")
+    #print(f"由挫曲負荷估算導螺桿桿徑: {dr_p}mm, 由導螺桿臨界轉速估算導螺桿桿徑: {dr_n}mm, 由拉伸負荷估算導螺桿桿徑: {dr_t}mm")
     dr_F =  max(dr_n, dr_p, dr_t)
     dr_F = dr_F + 4
 
     #由DN估算導螺桿桿徑
     dr_DN = round(150000 / Nm, 0)
-    print(f"直徑下限: {dr_F}mm, 直徑上限: {dr_DN}mm")
-    print(f"{dr_F}mm < 螺桿直徑 < {dr_DN}mm")
+    #print(f"直徑下限: {dr_F}mm, 直徑上限: {dr_DN}mm")
+    #print(f"{dr_F}mm < 螺桿直徑 < {dr_DN}mm")
 
     d_list = [8, 10, 12, 14, 15, 16, 20, 25, 28, 32, 36, 38, 40, 45, 50, 55, 60, 63, 70, 80, 100]
     suitable_dr = []
@@ -113,11 +113,11 @@ def Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_f
 
     #suitable_dr.extend(d_list[last_idx + 1 : last_idx + 4])
 
-    print(suitable_dr)
+    #print(suitable_dr)
 
-    print("="*100)
-    print(f"導程: {guide}")
-    print("="*100)
+    #print("="*100)
+    #print(f"導程: {guide}")
+    #print("="*100)
     return dr_F, dr_DN, suitable_dr, p, dr_t
 #dr_F, dr_DN, suitable_dr, p, dr_t = Diameter_calculation(gravity_axis_YN, load, cutting_force, length, maximum_feed_rate, guide, support_type)
 
@@ -132,7 +132,7 @@ def C_calculation(cutting_force, load, gravity_axis_YN, preload_rate):
         p = (cutting_force + ff)
 
     c = round(p / 3 / preload_rate, 0)
-    print(f"動負荷: {c} kfg")  
+    #print(f"動負荷: {c} kfg")  
     return c
 #c = C_calculation(cutting_force, load, gravity_axis_YN, preload_rate)
 
@@ -151,26 +151,26 @@ def verify_ballscrew_safety(dr_F, length, support_type="fixed_supported"):
 
     # --- 反推 1：容許臨界轉速 (rpm) ---
     # 依據通用/PMI公式，並乘上安全係數 0.8
-    allowable_speed = 0.8 * (f_val * dr * (10**7)) / (length ** 2)
+    allowable_speed = round(0.8 * (f_val * dr * (10**7)) / (length ** 2), 2)
 
     # --- 反推 2：容許最大壓縮力/挫曲負荷 (kgf) ---
     # 依據尤拉公式推導，安全係數 alpha 取 0.5
     E = 21000
     alpha = 0.5
     I = (math.pi * (dr ** 4)) / 64
-    allowable_buckling = alpha * (N_val * (math.pi ** 2) * E * I) / (length ** 2)
+    allowable_buckling = round(alpha * (N_val * (math.pi ** 2) * E * I) / (length ** 2), 2)
 
     # --- 反推 3：容許最大拉伸力 (kgf) ---
     # 依據應力公式推導
     allowable_stress = 14.7
     A = (math.pi * (dr ** 2)) / 4
-    allowable_tensile = allowable_stress * A
+    allowable_tensile = round(allowable_stress * A, 2)
 
-    print(f"公稱外徑_mm: {dr_F}")
-    print(f"容許臨界轉速_rpm: {round(allowable_speed, 2)}")
-    print(f"容許最大壓縮力(挫曲)_kgf: {round(allowable_buckling, 2)}")
-    print(f"容許最大拉伸力_kgf: {round(allowable_tensile, 2)}")
-    print("="*100)
+    # print(f"公稱外徑_mm: {dr_F}")
+    # print(f"容許臨界轉速_rpm: {round(allowable_speed, 2)}")
+    # print(f"容許最大壓縮力(挫曲)_kgf: {round(allowable_buckling, 2)}")
+    # print(f"容許最大拉伸力_kgf: {round(allowable_tensile, 2)}")
+    # print("="*100)
     return allowable_speed, allowable_buckling, allowable_tensile
 #allowable_speed, allowable_buckling, allowable_tensile = verify_ballscrew_safety(dr_F, length, support_type="fixed_supported")
 
@@ -307,8 +307,8 @@ def Motor_torque_calculation(guide, load, cutting_force):
     Tc = round((fc * hsp * me) / (2*pi)* 9.8 * 1e-3, 2) #N*m
 
     Trf = Tc + Tt
-    print(f"移動件所引起的摩擦扭矩: {Tt} N．mm, 軸向力引起的扭矩:{Tc} N．mm")
-    print(f"外加負荷引起之扭矩: {Trf} N．mm")
+    # print(f"移動件所引起的摩擦扭矩: {Tt} N．mm, 軸向力引起的扭矩:{Tc} N．mm")
+    # print(f"外加負荷引起之扭矩: {Trf} N．mm")
     return Trf
 
 #馬達慣量計算
@@ -323,28 +323,15 @@ def Motor_inertia_calculation(length, suitable_dr, load, guide):
     Js_motor = Js_raw * (reduction_ratio ** 2)
     Jt_motor = Jt_raw * (reduction_ratio ** 2)
     JL = round(Js_motor + Jt_motor, 4)
-    print(f"公稱外徑_mm: {suitable_dr[-1]}")
-    print(f"負載慣量: {JL} kgf．cm．s2")
-    print("=" *100)
+    # print(f"公稱外徑_mm: {suitable_dr[-1]}")
+    # print(f"負載慣量: {JL} kgf．cm．s2")
+    # print("=" *100)
     return JL
 # Trf = Motor_torque_calculation(guide, load, cutting_force)
 # JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
 
 # print()
 # print()
-
-def main() -> None:
-    results = Model_lookup(hiwin_df, pmi_df, suitable_dr, guide, c)
-    final_results = Rigidity_calculation(results, length, combination="DF")
-    print("螺桿推薦型號:")
-    for brand, result in final_results.items():
-        print(f"\n[{brand}]")
-        # 判斷如果是 DataFrame，就使用無索引且對齊的字串格式輸出
-        if isinstance(result, pd.DataFrame):
-            print(result.to_string(index = False))
-        else:
-            print(result)
-    print("=" *100)
 
 def run_ballscrew_calculation(params: dict) -> dict:
     """
@@ -382,6 +369,9 @@ def run_ballscrew_calculation(params: dict) -> dict:
         "dynamic_load": c,
         "torque": Trf,
         "inertia": JL,
+        "allowable_speed": allowable_speed,
+        "allowable_buckling": allowable_buckling,
+        "allowable_tensile": allowable_tensile,
         "recommendations": final_results # 包含 HIWIN 與 PMI 的 DataFrame
     }
 
