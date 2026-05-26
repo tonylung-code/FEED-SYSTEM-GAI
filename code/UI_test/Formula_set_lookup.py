@@ -22,6 +22,7 @@ pd.set_option('display.unicode.ambiguous_as_wide', True)
 
 hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
 pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core_v2.xlsx", engine='openpyxl')
+motor_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\FANUC_Motor_Specs_Direct.xlsx", engine='openpyxl')
 
 def Guide_list():
     hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
@@ -238,9 +239,8 @@ def Model_lookup(hiwin_df, pmi_df, suitable_dr, guide, c):
     return results
 
 #計算剛性
-#螺桿剛性-1 + 軸承剛性-1 + 螺帽剛性-1
+#1/螺桿剛性 + 1/軸承剛性 + 1/螺帽剛性
 #軸承內徑為型號前兩位數字，設定值為螺桿值徑-10 取最接近值
-
 def Rigidity_calculation(recommended_dict, length, combination):
 
     """
@@ -293,6 +293,7 @@ def Rigidity_calculation(recommended_dict, length, combination):
             df["總剛性 (kgf/um)"] = df.apply(calc_single_row, axis=1)
             
     return recommended_dict
+
 #馬達扭矩計算
 def Motor_torque_calculation(guide, load, cutting_force):
     w2 = load
@@ -312,26 +313,118 @@ def Motor_torque_calculation(guide, load, cutting_force):
     return Trf
 
 #馬達慣量計算
-def Motor_inertia_calculation(length, suitable_dr, load, guide):
-    proportion = 0.0078
-    L = length
-    g = 980
-    Js_raw = pi * proportion * (L* 0.1 )* ((suitable_dr[-1]*0.1)**4) / (32* g ) # kgf*cm*s**2
-    W = load
-    hsp = guide * 0.1
-    Jt_raw = W / g * (hsp / 2 / math.pi)**2 #增加減速比考慮
-    Js_motor = Js_raw * (reduction_ratio ** 2)
-    Jt_motor = Jt_raw * (reduction_ratio ** 2)
-    JL = round(Js_motor + Jt_motor, 4)
-    # print(f"公稱外徑_mm: {suitable_dr[-1]}")
-    # print(f"負載慣量: {JL} kgf．cm．s2")
-    # print("=" *100)
-    return JL
-# Trf = Motor_torque_calculation(guide, load, cutting_force)
-# JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
+def Calculate_Unique_Inertias(recommended_dict, length, load, reduction_ratio):
+    """
+    從推薦清單中提取不重複的 (公稱外徑, 導程) 組合，
+    獨立計算系統馬達負載慣量，並回傳一個全新的慣量對照表。
+    """
+    
+    # 1. 收集所有不重複的 (公稱外徑, 導程) 組合
+    unique_specs = set()
+    for brand, df in recommended_dict.items():
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            # 使用 zip 打包外徑與導程，放入 set 自動去重複
+            specs = zip(df["公稱 外徑"], df["導程"])
+            unique_specs.update(specs)
 
-# print()
-# print()
+    results_list = []
+    
+    # 共用常數設定
+    proportion = 0.0078
+    g = 980
+    W = load
+    L = length
+
+    # 2. 針對這些獨立組合，分別算一次慣量
+    # 排序可以讓輸出的表格按照外徑由小到大排列
+    for D, guide in sorted(list(unique_specs)):
+        
+        # --- 慣量計算核心公式 ---
+        # A. 螺桿本身慣量 Js_raw
+        Js_raw = math.pi * proportion * (L * 0.1) * ((D * 0.1) ** 4) / (32 * g)
+        
+        # B. 負載折算慣量 Jt_raw (hsp 為導程轉換單位)
+        hsp = guide * 0.1
+        Jt_raw = (W / g) * ((hsp / 2 / math.pi) ** 2)
+        
+        # C. 考慮減速比後的馬達端慣量
+        Js_motor = Js_raw * (reduction_ratio ** 2)
+        Jt_motor = Jt_raw * (reduction_ratio ** 2)
+        
+        # 總負載慣量
+        JL = round(Js_motor + Jt_motor, 4)
+        
+        # 將計算細節記錄下來
+        results_list.append({
+            "外徑_D": D,
+            "導程_Lead": guide,
+            "螺桿慣量_Js": round(Js_motor, 4),
+            "負載慣量_Jt": round(Jt_motor, 4),
+            "總負載慣量_JL": JL
+        })
+
+    # 3. 轉換為獨立的 DataFrame
+    summary_df = pd.DataFrame(results_list)
+    
+    # 4. 獨立報告
+    # print("\n" + "=" * 80)
+    # print(f"【 系統負載慣量獨立評估報告 (長度: {length}mm, 負載: {load}kg, 減速比: {reduction_ratio}) 】")
+    # if not summary_df.empty:
+    #     print(summary_df.to_string(index=False))
+    # else:
+    #     print("沒有讀取到有效規格可供計算。")
+    # print("=" * 80 + "\n")
+    
+    # 將這張獨立的表回傳給主程式
+    return summary_df
+
+import pandas as pd
+
+def motor_lookup_batch(Tr: float, motor_max_speed: float, inertia_df: pd.DataFrame, motor_df: pd.DataFrame) -> dict:
+    """
+    讀取慣量獨立報告 (DataFrame)，並批量篩選出適配的馬達。
+    
+    :param Tr: 系統需求最大扭矩 (Nm)
+    :param motor_max_speed: 馬達最大轉速 (RPM)
+    :param inertia_df: Calculate_Unique_Inertias 產出的 DataFrame
+    :param motor_df: 馬達型錄 DataFrame
+    """
+    
+    recommended_motors_dict = {}
+    
+
+    for index, row in inertia_df.iterrows():
+        # 提取規格與慣量數值
+        D = int(row["外徑_D"])
+        lead = int(row["導程_Lead"])
+        JL_kgfcms2 = row["總負載慣量_JL"]
+        
+        # 單位轉換 (kgf.cm.s^2 -> kg.m^2)
+        JL_kgm2 = JL_kgfcms2 * 0.0980665
+        
+        # 核心篩選條件
+        cond_torque = motor_df["Maximum_Torque_Nm"] >= Tr
+        cond_speed = motor_df["Rated_Speed_RPM"] >= motor_max_speed
+        # 放寬慣量條件：馬達慣量 >= (負載慣量 / 容許慣量比)
+        cond_inertia = motor_df["Rotor_Inertia_kgm2"] >= JL_kgm2 
+        # 取得符合條件的馬達清單
+        suitable_motors = motor_df[cond_torque & cond_speed & cond_inertia].copy()
+        
+        if not suitable_motors.empty:
+            # 順便幫工程師算出「實際慣量比」作為參考欄位
+            suitable_motors["實際慣量比"] = (JL_kgm2 / suitable_motors["Rotor_Inertia_kgm2"]).round(2)
+            
+            # 最佳化排序：依照扭矩與慣量由小到大排 (最經濟、剛好夠用的排在最前面)
+            suitable_motors = suitable_motors.sort_values(by=["Maximum_Torque_Nm", "Rotor_Inertia_kgm2"])
+            #取第一個最優解
+            suitable_motors = suitable_motors.head(1)
+        
+        # 建立專屬的分類 Key (例如: "外徑40_導程16")
+        key_name = f"外徑{D}_導程{lead}"
+        recommended_motors_dict[key_name] = suitable_motors
+        
+    return recommended_motors_dict
+
 
 def run_ballscrew_calculation(params: dict) -> dict:
     """
@@ -361,8 +454,9 @@ def run_ballscrew_calculation(params: dict) -> dict:
     final_results = Rigidity_calculation(results, length, combination)
     
     Trf = Motor_torque_calculation(guide, load, cutting_force)
-    JL = Motor_inertia_calculation(length, suitable_dr, load, guide)
-
+    JL = Calculate_Unique_Inertias(results, length, load, reduction_ratio)
+    suitable_motors = motor_lookup_batch(Trf, motor_max_speed, JL, motor_df)
+    
     # 將所有需要的結果打包回傳給 Streamlit
     return {
         "guide": guide,
@@ -372,8 +466,13 @@ def run_ballscrew_calculation(params: dict) -> dict:
         "allowable_speed": allowable_speed,
         "allowable_buckling": allowable_buckling,
         "allowable_tensile": allowable_tensile,
-        "recommendations": final_results # 包含 HIWIN 與 PMI 的 DataFrame
+        "recommendations": final_results, # 包含 HIWIN 與 PMI 的 DataFrame
+        "suitable_motors": suitable_motors
     }
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -401,3 +500,10 @@ if __name__ == "__main__":
         else:
             print(result)
     print("=" * 100)
+    print("\n適配的馬達推薦:")
+    for spec, motors in output["suitable_motors"].items():
+        print(f"\n【{spec}】")
+        if not motors.empty:
+            print(motors[["Model", "Maximum_Torque_Nm", "Rated_Speed_RPM", "Rotor_Inertia_kgm2", "實際慣量比"]].to_string(index=False))
+        else:
+            print("沒有找到符合條件的馬達。")
