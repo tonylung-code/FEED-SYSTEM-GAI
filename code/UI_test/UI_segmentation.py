@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import Formula_set_lookup as fsl  # 核心計算模組
-
+import os
 # 嘗試載入 RAG 套件
 try:
     import chromadb
@@ -78,139 +78,195 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# 建立全站大分頁
+main_tab1, main_tab2 = st.tabs(["⚙️ 智慧選型與推薦系統", "💬 AI 技術助理"])
 # --- [2. 主頁面四象限佈局] ---
-col1, col2 = st.columns([1, 1], gap="large")
+with main_tab1:
+    col1, col2 = st.columns([1, 1], gap="large")
 
-with col1:
-    top_left = st.container()
-    bottom_left = st.container()
-with col2:
-    top_right = st.container()
-    bottom_right = st.container()
+    with col1:
+        top_left = st.container()
+        bottom_left = st.container()
+    with col2:
+        top_right = st.container()
+        bottom_right = st.container()
 
-#左上：輸入參數區塊
-# ==========================================
-with top_left:
-    st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🛠️ 使用者設計條件結果</div>", unsafe_allow_html=True)
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            maximum_feed_rate = st.number_input("最大進給速率 (mm/min)", value=48000, step=1000)
-            motor_max_speed = st.number_input("馬達最高轉速 (rpm)", value=3000, step=100)
-            reduction_ratio = st.number_input("減速比", value=1.0, step=0.1)
-            load = st.number_input("負載 (kgf)", value=775, step=10)
-            cutting_force = st.number_input("切削力 (kgf)", value=343, step=10)
-        with c2:
-            length = st.number_input("行程 (mm)", value=924, step=10)
-            preload_rate = st.number_input("預壓率", value=0.05, step=0.01, format="%.2f")
-            gravity_axis_YN = st.checkbox("是否為重力軸?", value=True)
-            support_type = st.selectbox("支撐類型", ["fixed_supported", "supported_supported", "fixed_fixed", "fixed_free"])
-            combination = st.selectbox("軸承組合類型", ["DF", "DFD", "DFF"])
-
-ui_params = {
-            "maximum_feed_rate": maximum_feed_rate,
-            "motor_max_speed": motor_max_speed,
-            "reduction_ratio": reduction_ratio,
-            "load": load,
-            "cutting_force": cutting_force,
-            "length": length,
-            "preload_rate": preload_rate,
-            "gravity_axis_YN": gravity_axis_YN,
-            "support_type": support_type,
-            "combination": combination
-        }
-#核心運算觸發
-# ==========================================
-try:
-    calc_results = fsl.run_ballscrew_calculation(ui_params)
-    calc_success = True
-except Exception as e:
-    st.error(f"計算核心發生錯誤: {e}")
-    calc_success = False
-
-#左下：計算分析結果
-# ==========================================
-if calc_success:
-    with bottom_left:
-        st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🔩物理參數分析結果</div>", unsafe_allow_html=True)
+    #左上：輸入參數區塊
+    # ==========================================
+    with top_left:
+        st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🛠️ 使用者設計條件結果</div>", unsafe_allow_html=True)
         with st.container(border=True):
-            
-            st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>螺桿基礎參數</div>", unsafe_allow_html=True)
-            st.write(f"- 系統建議導程: **{calc_results.get('guide')}** mm")
-            st.write(f"- 計算動負荷: **{calc_results.get('dynamic_load')}** kgf")
-            
-            st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>螺桿安全驗證</div>", unsafe_allow_html=True)
-            # 這裡對應您字典中可能包裝的 key，若為扁平結構請依您的實際 key 調整
-            st.write(f"- 容許臨界轉速: **{calc_results.get('allowable_speed', 0):.2f}** rpm")
-            st.write(f"- 容許最大壓縮力(挫曲): **{calc_results.get('allowable_buckling', 0):.2f}** kgf")
-            st.write(f"- 容許最大拉伸力: **{calc_results.get('allowable_tensile', 0):.2f}** kgf")
+            c1, c2 = st.columns(2)
+            with c1:
+                maximum_feed_rate = st.number_input("最大進給速率 (mm/min)", value=48000, step=1000)
+                motor_max_speed = st.number_input("馬達最高轉速 (rpm)", value=3000, step=100)
+                reduction_ratio = st.number_input("減速比", value=1.0, step=0.1)
+                load = st.number_input("負載 (kgf)", value=775, step=10)
+                cutting_force = st.number_input("切削力 (kgf)", value=343, step=10)
+            with c2:
+                length = st.number_input("行程 (mm)", value=924, step=10)
+                preload_rate = st.number_input("預壓率", value=0.05, step=0.01, format="%.2f")
+                gravity_axis_YN = st.checkbox("是否為重力軸?", value=True)
+                support_type = st.selectbox("支撐類型", ["fixed_supported", "supported_supported", "fixed_fixed", "fixed_free"])
+                combination = st.selectbox("軸承組合類型", ["DF", "DFD", "DFF"])
 
-            st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>馬達匹配參數</div>", unsafe_allow_html=True)
-            st.write(f"- 系統總扭矩 (Trf): **{calc_results.get('torque')}** N.m")
-            st.write(f"- 負載慣量 (JL): **{calc_results.get('inertia')}** kgf．cm．s2")
+    ui_params = {
+                "maximum_feed_rate": maximum_feed_rate,
+                "motor_max_speed": motor_max_speed,
+                "reduction_ratio": reduction_ratio,
+                "load": load,
+                "cutting_force": cutting_force,
+                "length": length,
+                "preload_rate": preload_rate,
+                "gravity_axis_YN": gravity_axis_YN,
+                "support_type": support_type,
+                "combination": combination,
+            }
+    #核心運算觸發
+    # ==========================================
+    try:
+        calc_results = fsl.run_ballscrew_calculation(ui_params)
+        calc_success = True
+    except Exception as e:
+        st.error(f"計算核心發生錯誤: {e}")
+        calc_success = False
 
-#右上：推薦系統 (DataFrames)
-# ==========================================
-if calc_success:
-    with top_right:
-        st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🌟 系統推薦型號</div>", unsafe_allow_html=True)
-        
-        
-        recs = calc_results.get("recommendations", {})
-        
-        # 使用 Streamlit 的 Tabs 分頁顯示不同品牌
-        tab1, tab2 = st.tabs(["HIWIN 推薦規格", "PMI 推薦規格"])
-        
-        with tab1:
-            hiwin_data = recs.get("HIWIN")
-            if isinstance(hiwin_data, pd.DataFrame):
-                st.dataframe(hiwin_data, use_container_width=True, hide_index=True)
-            else:
-                st.warning(hiwin_data) # 顯示字串警告訊息
+    #左下：計算分析結果
+    # ==========================================
+    if calc_success:
+        with bottom_left:
+            st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🔩物理參數分析結果</div>", unsafe_allow_html=True)
+            with st.container(border=True):
                 
-        with tab2:
-            pmi_data = recs.get("PMI")
-            if isinstance(pmi_data, pd.DataFrame):
-                st.dataframe(pmi_data, use_container_width=True, hide_index=True)
-            else:
-                st.warning(pmi_data)
+                st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>螺桿基礎參數</div>", unsafe_allow_html=True)
+                st.write(f"- 系統建議導程: **{calc_results.get('guide')}** mm")
+                st.write(f"- 計算動負荷: **{calc_results.get('dynamic_load')}** kgf")
+                
+                st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>螺桿安全驗證</div>", unsafe_allow_html=True)
+                # 這裡對應您字典中可能包裝的 key，若為扁平結構請依您的實際 key 調整
+                st.write(f"- 容許臨界轉速: **{calc_results.get('allowable_speed', 0):.2f}** rpm")
+                st.write(f"- 容許最大壓縮力(挫曲): **{calc_results.get('allowable_buckling', 0):.2f}** kgf")
+                st.write(f"- 容許最大拉伸力: **{calc_results.get('allowable_tensile', 0):.2f}** kgf")
 
-#右下：RAG 聊天室
+                st.markdown("<div style='font-size: 22px; font-weight: bold; margin-top: 5px; margin-bottom: 8px;'>馬達匹配參數</div>", unsafe_allow_html=True)
+                inertia = calc_results.get('inertia')
+                st.write(f"- 系統總扭矩 (Trf): **{calc_results.get('torque')}** N.m")
+                if isinstance(inertia, pd.DataFrame) and not inertia.empty:
+                    for index, row in inertia.iterrows():
+                        d = int(row['外徑_D'])
+                        g = int(row['導程_Lead'])
+                        jl = round(row['總負載慣量_JL'], 5)
+                        st.markdown(f"**【外徑{d}_導程{g}】**")
+                        st.write(f"- 負載慣量 **(JL): {jl}** kg.m2")
+                else:
+                    st.warning("慣量計算錯誤。")
+                # for spec, motors in calc_results.get("suitable_motors", {}).items():
+                #     st.write(f"\n【{spec}】")
+                #     if not motors.empty:
+                #         st.write(f"- 負載慣量 (JL): **{round(inertia[["總負載慣量_JL"]].iloc[cunt], 5).to_string(index=False)}** kg.m2")
+                #         cunt += 1
+
+                #     else:
+                #         st.warning("沒有找到符合條件的馬達。")
+                #st.write(f"- 負載慣量 (JL): **{calc_results.get('inertia')}** kgf．cm．s2")
+
+    #右上：推薦系統 (DataFrames)
+    # ==========================================
+    if calc_success:
+        with top_right:
+            st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>🌟 系統推薦型號</div>", unsafe_allow_html=True)
+            
+            
+            recs = calc_results.get("recommendations", {})
+            
+            # 使用 Streamlit 的 Tabs 分頁顯示不同品牌
+            tab1, tab2 = st.tabs(["HIWIN 推薦規格", "PMI 推薦規格"])
+            
+            with tab1:
+                hiwin_data = recs.get("HIWIN")
+                if isinstance(hiwin_data, pd.DataFrame):
+                    st.dataframe(hiwin_data, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(hiwin_data) # 顯示字串警告訊息
+                    
+            with tab2:
+                pmi_data = recs.get("PMI")
+                if isinstance(pmi_data, pd.DataFrame):
+                    st.dataframe(pmi_data, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(pmi_data)
+
+#右下：馬達推薦與規格圖顯示
 # ==========================================
-with bottom_right:
-    st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>AI 技術助理</div>", unsafe_allow_html=True)
+    if calc_success:
+            with bottom_right:
+                st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>⚡ 適配馬達推薦</div>", unsafe_allow_html=True)
+                
+                # 確保您的後端 run_ballscrew_calculation 有回傳這個 key
+                motor_recs = calc_results.get("suitable_motors", {})
 
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
+                
+                with st.container(border=True):
+                    if motor_recs:
+                        # 使用下拉選單讓使用者切換不同的「外徑_導程」組合
+                        selected_spec = st.selectbox("選擇螺桿組合以查看適配馬達：", list(motor_recs.keys()))
+                        motor_df = motor_recs[selected_spec]
+                        
+                        if isinstance(motor_df, pd.DataFrame) and not motor_df.empty:
+                            # 1. 顯示馬達表格
+                            display_cols = ["Model", "Maximum_Torque_Nm", "Rated_Speed_RPM", "Rotor_Inertia_kgm2", "實際慣量比"]
+                            safe_cols = [col for col in display_cols if col in motor_df.columns]
+                            st.dataframe(motor_df[safe_cols], use_container_width=True, hide_index=True)
+                            
+                            # 2. 顯示圖片邏輯 (假設圖檔放在 "images" 資料夾下，且附檔名為 .png)
+                            if "page" in motor_df.columns:
+                                page_name = motor_df["page"].iloc[0] # 取出例如 "page_88"
+                                img_path = f"images/{page_name}.png"  # 請確保專案中有 images 資料夾並放入圖片
+                                img_path = rf"C:\Users\e11338\Downloads\characteristics_curves_and_data_sheet\characteristics_curves_and_data_sheet\page_{page_name}.png"
+                                model_name = motor_df["Model"].iloc[0]
+                                st.markdown("---")
+                                st.markdown(f"**馬達規格尺寸圖 ({model_name})**")
+                                if os.path.exists(img_path):
+                                    st.image(img_path, use_container_width=True)
+                                else:
+                                    st.warning(f"找不到對應的圖檔：{img_path} (請確認路徑與附檔名是否正確)")
+                    else:
+                        st.info("系統尚未回傳馬達推薦清單。")
 
-    chat_container = st.container(height=350, border=True)
+    # with bottom_right:
+    #     st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>AI 技術助理</div>", unsafe_allow_html=True)
 
-    with chat_container:
-        for msg in st.session_state.messages:
-            with st.chat_message(msg['role']):
-                st.write(msg['content'])
+    #     if 'messages' not in st.session_state:
+    #         st.session_state.messages = []
 
-    if prompt := st.chat_input("詢問規格差異或技術問題..."):
-        st.session_state.messages.append({'role': 'user', 'content': prompt})
-        with chat_container:
-            with st.chat_message('user'):
-                st.write(prompt)
+    #     chat_container = st.container(height=350, border=True)
 
-        # 這裡組合動態 Context 餵給 AI
-        if calc_success:
-            context = f"目前計算參數：建議導程 {calc_results.get('guide')} mm, 動負荷 {calc_results.get('dynamic_load')} kgf, 馬達扭矩 {calc_results.get('torque')} N.m"
-        else:
-            context = "尚未成功計算參數。"
+    #     with chat_container:
+    #         for msg in st.session_state.messages:
+    #             with st.chat_message(msg['role']):
+    #                 st.write(msg['content'])
 
-        # 簡單的 Echo 測試或銜接您的 RAG API
-        if RAG_AVAILABLE:
-            # 此處可替換為您原本的 rag_query 函式
-            response = "（AI 助理分析中...請在此處接回您原本的 ollama 呼叫代碼）" 
-        else:
-            response = f"系統目前未連接 Ollama，但已收到您的問題與當前環境參數：\n{context}"
-        
-        st.session_state.messages.append({'role': 'assistant', 'content': response})
-        st.rerun()
+    #     if prompt := st.chat_input("詢問規格差異或技術問題..."):
+    #         st.session_state.messages.append({'role': 'user', 'content': prompt})
+    #         with chat_container:
+    #             with st.chat_message('user'):
+    #                 st.write(prompt)
+
+    #         # 這裡組合動態 Context 餵給 AI
+    #         if calc_success:
+    #             context = f"目前計算參數：建議導程 {calc_results.get('guide')} mm, 動負荷 {calc_results.get('dynamic_load')} kgf, 馬達扭矩 {calc_results.get('torque')} N.m"
+    #         else:
+    #             context = "尚未成功計算參數。"
+
+    #         # 簡單的 Echo 測試或銜接您的 RAG API
+    #         if RAG_AVAILABLE:
+    #             # 此處可替換為您原本的 rag_query 函式
+    #             response = "（AI 助理分析中...請在此處接回您原本的 ollama 呼叫代碼）" 
+    #         else:
+    #             response = f"系統目前未連接 Ollama，但已收到您的問題與當前環境參數：\n{context}"
+            
+    #         st.session_state.messages.append({'role': 'assistant', 'content': response})
+    #         st.rerun()
 
 #def test_integration():
     print("啟動測試：嘗試呼叫 Formula_set_lookup 模組...")

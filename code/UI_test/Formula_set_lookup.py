@@ -22,7 +22,7 @@ pd.set_option('display.unicode.ambiguous_as_wide', True)
 
 hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
 pmi_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\PMI_Optimized_Core_v2.xlsx", engine='openpyxl')
-motor_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\FANUC_Motor_Specs_Direct.xlsx", engine='openpyxl')
+motor_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\FANUC_Motor_Specs_Direct.xlsx", sheet_name = "model", engine='openpyxl')
 
 def Guide_list():
     hiwin_df = pd.read_excel(r"C:\Users\e11338\Desktop\Feed System GAI\data\HIWIN_Final_Data_V1.xlsx", engine='openpyxl')
@@ -360,20 +360,20 @@ def Calculate_Unique_Inertias(recommended_dict, length, load, reduction_ratio):
             "導程_Lead": guide,
             "螺桿慣量_Js": round(Js_motor, 4),
             "負載慣量_Jt": round(Jt_motor, 4),
-            "總負載慣量_JL": JL
+            "總負載慣量_JL": JL,
         })
 
     # 3. 轉換為獨立的 DataFrame
     summary_df = pd.DataFrame(results_list)
     
     # 4. 獨立報告
-    # print("\n" + "=" * 80)
-    # print(f"【 系統負載慣量獨立評估報告 (長度: {length}mm, 負載: {load}kg, 減速比: {reduction_ratio}) 】")
-    # if not summary_df.empty:
-    #     print(summary_df.to_string(index=False))
-    # else:
-    #     print("沒有讀取到有效規格可供計算。")
-    # print("=" * 80 + "\n")
+    print("\n" + "=" * 80)
+    print(f"【 系統負載慣量獨立評估報告 (長度: {length}mm, 負載: {load}kg, 減速比: {reduction_ratio}) 】")
+    if not summary_df.empty:
+        print(summary_df["總負載慣量_JL"].to_string(index=False))
+    else:
+        print("沒有讀取到有效規格可供計算。")
+    print("=" * 80 + "\n")
     
     # 將這張獨立的表回傳給主程式
     return summary_df
@@ -413,7 +413,7 @@ def motor_lookup_batch(Tr: float, motor_max_speed: float, inertia_df: pd.DataFra
         if not suitable_motors.empty:
             # 順便幫工程師算出「實際慣量比」作為參考欄位
             suitable_motors["實際慣量比"] = (JL_kgm2 / suitable_motors["Rotor_Inertia_kgm2"]).round(2)
-            
+            suitable_motors["總附載慣量_kgm2"] = JL_kgm2
             # 最佳化排序：依照扭矩與慣量由小到大排 (最經濟、剛好夠用的排在最前面)
             suitable_motors = suitable_motors.sort_values(by=["Maximum_Torque_Nm", "Rotor_Inertia_kgm2"])
             #取第一個最優解
@@ -421,8 +421,7 @@ def motor_lookup_batch(Tr: float, motor_max_speed: float, inertia_df: pd.DataFra
         
         # 建立專屬的分類 Key (例如: "外徑40_導程16")
         key_name = f"外徑{D}_導程{lead}"
-        recommended_motors_dict[key_name] = suitable_motors
-        
+        recommended_motors_dict[key_name] = suitable_motors   
     return recommended_motors_dict
 
 
@@ -504,6 +503,6 @@ if __name__ == "__main__":
     for spec, motors in output["suitable_motors"].items():
         print(f"\n【{spec}】")
         if not motors.empty:
-            print(motors[["Model", "Maximum_Torque_Nm", "Rated_Speed_RPM", "Rotor_Inertia_kgm2", "實際慣量比"]].to_string(index=False))
+            print(motors[["Model", "Maximum_Torque_Nm", "Rated_Speed_RPM", "Rotor_Inertia_kgm2", "實際慣量比", "page"]].to_string(index=False))
         else:
             print("沒有找到符合條件的馬達。")
