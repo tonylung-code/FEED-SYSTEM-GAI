@@ -1,0 +1,1 @@
+streamlit run CUserse11338DesktopFeed System GAIcodeUI_testUI_segmentation.py--server.port 8888

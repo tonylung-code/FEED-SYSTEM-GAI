@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
 import Formula_set_lookup as fsl  # 核心計算模組
-import os
+from llm_rag_service import (
+    VALID_SOURCES,
+    answer_question,
+    list_local_ollama_models,
+    model_display_name,
+)
+from ui_paths import motor_image_path, motor_image_png_bytes
 # 嘗試載入 RAG 套件
 try:
     import chromadb
@@ -77,6 +83,121 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+
+def summarize_dataframe(df: pd.DataFrame, columns: list[str], limit: int = 3) -> list[dict]:
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return []
+
+    safe_cols = [col for col in columns if col in df.columns]
+    if not safe_cols:
+        return []
+
+    return df[safe_cols].head(limit).to_dict("records")
+
+
+def _json_safe_value(value):
+    if isinstance(value, dict):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if pd.isna(value):
+        return None
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
+
+
+def _json_safe_records(records: list[dict]) -> list[dict]:
+    return [
+        {key: _json_safe_value(value) for key, value in row.items()}
+        for row in records
+    ]
+
+
+def build_llm_context(
+    calc_results: dict | None,
+    source: str = "All",
+    ui_params: dict | None = None,
+) -> dict:
+    if not calc_results:
+        return {"status": "calculation unavailable"}
+
+    screw_recommendations = {}
+    for brand, rec_df in calc_results.get("recommendations", {}).items():
+        if source == "FANUC":
+            continue
+        if source in ("HIWIN", "PMI") and brand != source:
+            continue
+        records = summarize_dataframe(
+            rec_df,
+            ["系列", "型號", "公稱 外徑", "導程", "動負荷 C (kfg)", "剛性 kfg/umk", "總剛性 (kgf/um)"],
+            limit=10,
+        )
+        screw_recommendations[brand] = [
+            {"brand": brand, "component": "ballscrew", **record}
+            for record in records
+        ]
+
+    motor_recommendations = {"FANUC": []}
+    for spec, motor_df in calc_results.get("suitable_motors", {}).items():
+        records = summarize_dataframe(
+            motor_df,
+            ["Model", "Maximum_Torque_Nm", "Rated_Speed_RPM", "Rotor_Inertia_kgm2", "實際慣量比", "page"],
+            limit=3,
+        )
+        for record in records:
+            motor_recommendations["FANUC"].append(
+                {
+                    "brand": "FANUC",
+                    "component": "motor",
+                    "matched_screw_spec": spec,
+                    **record,
+                }
+            )
+
+    inertia_summary = summarize_dataframe(
+        calc_results.get("inertia"),
+        ["外徑_D", "導程_Lead", "總負載慣量_JL"],
+        limit=10,
+    )
+
+    safety_summary = {
+        "allowable_speed_rpm": calc_results.get("allowable_speed"),
+        "allowable_buckling_kgf": calc_results.get("allowable_buckling"),
+        "allowable_tensile_kgf": calc_results.get("allowable_tensile"),
+    }
+
+    calculation_summary = {
+        "guide_mm": calc_results.get("guide"),
+        "dynamic_load_kgf": calc_results.get("dynamic_load"),
+        "required_torque_nm": calc_results.get("torque"),
+        "screw_brands": ["HIWIN", "PMI"],
+        "motor_brand": "FANUC",
+    }
+
+    safe_screw_recommendations = _json_safe_records([screw_recommendations])[0]
+    safe_motor_recommendations = _json_safe_records([motor_recommendations])[0]
+
+    return {
+        "status": "calculation available",
+        "selected_source": source,
+        "input_params": _json_safe_records([ui_params or {}])[0],
+        "calculation_summary": _json_safe_value(calculation_summary),
+        "guide": calc_results.get("guide"),
+        "dynamic_load": calc_results.get("dynamic_load"),
+        "torque": calc_results.get("torque"),
+        "safety_summary": safety_summary,
+        "screw_recommendations": safe_screw_recommendations,
+        "motor_recommendations": safe_motor_recommendations,
+        "recommendations_summary": safe_screw_recommendations,
+        "inertia_summary": _json_safe_records(inertia_summary),
+        "motor_summary": safe_motor_recommendations,
+    }
+
 
 # 建立全站大分頁
 main_tab1, main_tab2 = st.tabs(["⚙️ 智慧選型與推薦系統", "💬 AI 技術助理"])
@@ -218,57 +339,76 @@ with main_tab1:
                             safe_cols = [col for col in display_cols if col in motor_df.columns]
                             st.dataframe(motor_df[safe_cols], use_container_width=True, hide_index=True)
                             
-                            # 2. 顯示圖片邏輯 (假設圖檔放在 "images" 資料夾下，且附檔名為 .png)
+                            # 2. 依 Excel page 欄位顯示對應的馬達規格圖
                             if "page" in motor_df.columns:
-                                page_name = motor_df["page"].iloc[0] # 取出例如 "page_88"
-                                img_path = f"images/{page_name}.png"  # 請確保專案中有 images 資料夾並放入圖片
-                                img_path = rf"C:\Users\e11338\Downloads\characteristics_curves_and_data_sheet\characteristics_curves_and_data_sheet\page_{page_name}.png"
+                                page_value = motor_df["page"].iloc[0]
                                 model_name = motor_df["Model"].iloc[0]
+                                img_path = motor_image_path(page_value, model_name=model_name)
                                 st.markdown("---")
                                 st.markdown(f"**馬達規格尺寸圖 ({model_name})**")
-                                if os.path.exists(img_path):
-                                    st.image(img_path, use_container_width=True)
+                                high_res_image = motor_image_png_bytes(page_value, model_name=model_name)
+                                if high_res_image:
+                                    st.image(high_res_image, use_container_width=True)
+                                elif img_path and img_path.exists():
+                                    st.image(str(img_path), use_container_width=True)
                                 else:
-                                    st.warning(f"找不到對應的圖檔：{img_path} (請確認路徑與附檔名是否正確)")
+                                    st.warning(
+                                        f"找不到對應的圖檔：model={model_name}, page={page_value}, path={img_path}"
+                                    )
+                            else:
+                                st.warning("馬達資料缺少 page 欄位，無法顯示規格圖。")
                     else:
                         st.info("系統尚未回傳馬達推薦清單。")
 
-    # with bottom_right:
-    #     st.markdown("<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>AI 技術助理</div>", unsafe_allow_html=True)
+with main_tab2:
+    st.markdown(
+        "<div style='font-size: 30px; font-weight: bold; margin-top: 5px; color: #1E3A8A; margin-bottom: 8px;'>AI 技術助理</div>",
+        unsafe_allow_html=True,
+    )
 
-    #     if 'messages' not in st.session_state:
-    #         st.session_state.messages = []
+    source = st.selectbox("選擇知識來源：", list(VALID_SOURCES), index=3)
+    local_models = list_local_ollama_models()
+    preferred_model = "gemma3:1b"
 
-    #     chat_container = st.container(height=350, border=True)
+    if local_models:
+        default_index = local_models.index(preferred_model) if preferred_model in local_models else 0
+        model_name = st.selectbox("選擇本機 Ollama 模型：", local_models, index=default_index)
+    else:
+        st.warning("目前偵測不到本機 Ollama 模型，請確認 Ollama 是否已啟動。")
+        model_name = st.text_input("Ollama 模型名稱", value=preferred_model)
 
-    #     with chat_container:
-    #         for msg in st.session_state.messages:
-    #             with st.chat_message(msg['role']):
-    #                 st.write(msg['content'])
+    st.caption(f"目前使用模型：{model_display_name(model_name)}")
 
-    #     if prompt := st.chat_input("詢問規格差異或技術問題..."):
-    #         st.session_state.messages.append({'role': 'user', 'content': prompt})
-    #         with chat_container:
-    #             with st.chat_message('user'):
-    #                 st.write(prompt)
+    if "llm_messages" not in st.session_state:
+        st.session_state.llm_messages = []
 
-    #         # 這裡組合動態 Context 餵給 AI
-    #         if calc_success:
-    #             context = f"目前計算參數：建議導程 {calc_results.get('guide')} mm, 動負荷 {calc_results.get('dynamic_load')} kgf, 馬達扭矩 {calc_results.get('torque')} N.m"
-    #         else:
-    #             context = "尚未成功計算參數。"
+    if st.button("清除對話"):
+        st.session_state.llm_messages = []
+        st.rerun()
 
-    #         # 簡單的 Echo 測試或銜接您的 RAG API
-    #         if RAG_AVAILABLE:
-    #             # 此處可替換為您原本的 rag_query 函式
-    #             response = "（AI 助理分析中...請在此處接回您原本的 ollama 呼叫代碼）" 
-    #         else:
-    #             response = f"系統目前未連接 Ollama，但已收到您的問題與當前環境參數：\n{context}"
-            
-    #         st.session_state.messages.append({'role': 'assistant', 'content': response})
-    #         st.rerun()
+    chat_container = st.container(height=430, border=True)
+    with chat_container:
+        for msg in st.session_state.llm_messages:
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
 
-#def test_integration():
+    prompt = st.chat_input("詢問規格差異、馬達選型或技術問題...")
+    if prompt:
+        st.session_state.llm_messages.append({"role": "user", "content": prompt})
+        calc_context = build_llm_context(calc_results if calc_success else None, source=source, ui_params=ui_params)
+
+        with st.spinner("AI 正在查詢向量資料庫並產生回答..."):
+            response = answer_question(
+                question=prompt,
+                source=source,
+                calc_context=calc_context,
+                model=model_name,
+            )
+
+        st.session_state.llm_messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
+def test_integration():
     print("啟動測試：嘗試呼叫 Formula_set_lookup 模組...")
     print("-" * 50)
 
